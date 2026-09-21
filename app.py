@@ -106,8 +106,8 @@ Rules:
 - Return ONLY valid JSON. No backticks, markdown, or extra explanations.
 """
 
-    # Fast priority list: Instant model access without listing APIs
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    # Updated active model versions
+    models_to_try = ["gemini-2.5-flash", "gemini-3.6-flash"]
     response = None
     last_error = None
 
