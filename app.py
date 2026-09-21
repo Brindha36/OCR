@@ -3,15 +3,19 @@ import os
 import json
 import re
 import pymysql
+from datetime import datetime
+from werkzeug.utils import secure_filename
 from PIL import Image
 from google import genai
 from google.genai import types
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploaded_files")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+# Dedicated directory for storing all uploaded invoices
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
+os.makedirs(INVOICE_STORAGE_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = INVOICE_STORAGE_FOLDER
 
 # Dynamic Database Configuration using Environment Variables
 DB_CONFIG = {
@@ -64,7 +68,6 @@ def analyze_invoice(file_path):
     client = get_client()
     model = get_model(client)
 
-    # Gemini handles both images and PDFs natively without needing Poppler!
     prompt = """
 You are an expert Indian GST tax invoice auditor. Carefully inspect the entire document image/PDF and extract the accurate financial values into valid JSON.
 
@@ -153,8 +156,10 @@ Extraction Rules:
             "type": "Not found"
         }
 
+# Serves stored files from uploaded_invoices
+@app.route("/invoices/<filename>")
 @app.route("/uploaded_files/<filename>")
-def uploaded_file(filename):
+def get_invoice_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 @app.route("/")
@@ -180,12 +185,17 @@ def analyze():
         return jsonify({"success": False, "error": "No file selected"}), 400
 
     try:
-        filename = file.filename
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(path)
+        # Create a safe, timestamped filename so files don't overwrite each other
+        original_name = secure_filename(file.filename)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        saved_filename = f"{timestamp}_{original_name}"
+        
+        # Save file directly inside uploaded_invoices/
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], saved_filename)
+        file.save(file_path)
 
-        data = analyze_invoice(path)
-        data["filename"] = filename
+        data = analyze_invoice(file_path)
+        data["filename"] = saved_filename
         return jsonify({"success": True, "data": data})
     except Exception as e:
         print(f"Analysis error: {e}")
