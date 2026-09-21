@@ -131,16 +131,11 @@ def uploaded_file(filename):
 
 @app.route("/")
 def index():
-    batches = []
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM batch_uploads ORDER BY id DESC")
-            batches = cursor.fetchall()
-        conn.close()
-    except Exception as e:
-        print(f"Database connection error: {e}")
-        # Page still renders even if remote DB connection is blocked
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM batch_uploads ORDER BY id DESC")
+        batches = cursor.fetchall()
+    conn.close()
     return render_template("index.html", batches=batches)
 
 @app.route("/analyze", methods=["POST"])
