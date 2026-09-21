@@ -19,6 +19,7 @@ DB_CONFIG = {
     "password": os.environ.get("DB_PASSWORD", ""),
     "database": os.environ.get("DB_NAME", "uniformk_sowmya"),
     "port": int(os.environ.get("DB_PORT", 3306)),
+    "connect_timeout": 5,  # Times out after 5 seconds instead of hanging
     "cursorclass": pymysql.cursors.DictCursor
 }
 
@@ -130,11 +131,16 @@ def uploaded_file(filename):
 
 @app.route("/")
 def index():
-    conn = get_db_connection()
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT * FROM batch_uploads ORDER BY id DESC")
-        batches = cursor.fetchall()
-    conn.close()
+    batches = []
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM batch_uploads ORDER BY id DESC")
+            batches = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        # Page still renders even if remote DB connection is blocked
     return render_template("index.html", batches=batches)
 
 @app.route("/analyze", methods=["POST"])
