@@ -5,19 +5,17 @@ import re
 import pymysql
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from PIL import Image
 from google import genai
 from google.genai import types
 
 app = Flask(__name__)
 
-# Dedicated directory for storing all uploaded invoices
+# Ensure absolute path for storage
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
 os.makedirs(INVOICE_STORAGE_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = INVOICE_STORAGE_FOLDER
 
-# Dynamic Database Configuration using Environment Variables
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST"),
     "user": os.environ.get("DB_USER"),
@@ -35,26 +33,14 @@ def get_db_connection():
 def get_client():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise Exception("GOOGLE_API_KEY not set in environment")
+        raise Exception("GOOGLE_API_KEY is not set in Render Environment variables")
     return genai.Client(api_key=api_key)
 
-def get_model(client):
-    try:
-        models = client.models.list()
-        for m in models:
-            if "gemini" in m.name:
-                return m.name
-    except Exception:
-        pass
-    return "gemini-2.5-flash"
-
 def clean_float(val):
-    """Safely extracts a valid decimal float number from any string."""
     if not val or val == "Not found":
         return 0.0
     if isinstance(val, (int, float)):
         return float(val)
-    
     cleaned = str(val).replace(",", "").strip()
     match = re.search(r"[-+]?\d*\.\d+|\d+", cleaned)
     if match:
@@ -66,10 +52,12 @@ def clean_float(val):
 
 def analyze_invoice(file_path):
     client = get_client()
-    model = get_model(client)
+
+    # Upload using Gemini File API (fast and works reliably for both PDF and Images)
+    uploaded_ref = client.files.upload(file=file_path)
 
     prompt = """
-You are an expert Indian GST tax invoice auditor. Carefully inspect the entire document image/PDF and extract the accurate financial values into valid JSON.
+You are an expert Indian GST tax invoice auditor. Carefully inspect this document and extract the exact details into valid JSON.
 
 JSON Structure:
 {
@@ -89,43 +77,25 @@ JSON Structure:
   "type": "Manual or Computer Generated"
 }
 
-Extraction Rules:
-1. "net_amount": The total TAXABLE amount BEFORE tax/GST is added (Subtotal / Taxable Value).
-2. "cgst_amount": Central GST amount (if any; else 0.00).
-3. "sgst_amount": State GST amount (if any; else 0.00).
-4. "igst_amount": Integrated GST amount (if any; else 0.00).
-5. "gst_5_amount": Tax amount specifically charged at 5% GST rate (if itemized; else 0.00).
-6. "gst_12_amount": Tax amount specifically charged at 12% GST rate (if itemized; else 0.00).
-7. "total_gst_amount": Sum of all GST taxes (CGST + SGST + IGST).
-8. "grand_total": FINAL payable invoice amount including all taxes, round-offs, freight, and discounts.
-9. Return ONLY valid pure JSON.
+Rules:
+- "net_amount": Total taxable value BEFORE tax.
+- "cgst_amount", "sgst_amount", "igst_amount": Respective tax values.
+- "gst_5_amount", "gst_12_amount": Specific tax slabs if specified.
+- "total_gst_amount": Total tax sum.
+- "grand_total": Final payable total.
+- Return pure JSON only.
 """
 
-    if file_path.lower().endswith(".pdf"):
-        with open(file_path, "rb") as f:
-            pdf_bytes = f.read()
-        file_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
-    else:
-        img = Image.open(file_path)
-        file_part = img
-
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=[prompt, file_part],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.1
-            )
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[uploaded_ref, prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.1
         )
-        raw_text = response.text.strip()
-    except Exception:
-        response = client.models.generate_content(
-            model=model,
-            contents=[prompt, file_part]
-        )
-        raw_text = response.text.strip()
+    )
 
+    raw_text = response.text.strip()
     if raw_text.startswith("```"):
         raw_text = raw_text.strip("`")
         if raw_text.startswith("json"):
@@ -138,7 +108,7 @@ Extraction Rules:
             data[key] = f"{clean_float(data.get(key, 0.0)):.2f}"
         return data
     except Exception as e:
-        print(f"JSON parsing error: {e}")
+        print(f"JSON Parse Exception: {e}")
         return {
             "company_name": "Not found",
             "invoice_no": "Not found",
@@ -156,7 +126,6 @@ Extraction Rules:
             "type": "Not found"
         }
 
-# Serves stored files from uploaded_invoices
 @app.route("/invoices/<filename>")
 @app.route("/uploaded_files/<filename>")
 def get_invoice_file(filename):
@@ -172,7 +141,7 @@ def index():
             batches = cursor.fetchall()
         conn.close()
     except Exception as e:
-        print(f"Database connection skipped/failed: {e}")
+        print(f"Database warning: {e}")
     return render_template("index.html", batches=batches)
 
 @app.route("/analyze", methods=["POST"])
@@ -185,12 +154,9 @@ def analyze():
         return jsonify({"success": False, "error": "No file selected"}), 400
 
     try:
-        # Create a safe, timestamped filename so files don't overwrite each other
         original_name = secure_filename(file.filename)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         saved_filename = f"{timestamp}_{original_name}"
-        
-        # Save file directly inside uploaded_invoices/
         file_path = os.path.join(app.config["UPLOAD_FOLDER"], saved_filename)
         file.save(file_path)
 
@@ -198,12 +164,12 @@ def analyze():
         data["filename"] = saved_filename
         return jsonify({"success": True, "data": data})
     except Exception as e:
-        print(f"Analysis error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 200
+        print(f"Server Error during analyze: {e}")
+        return jsonify({"success": False, "error": f"Analysis failed: {str(e)}"}), 200
 
 @app.route("/save-batch", methods=["POST"])
 def save_batch():
-    payload = request.json
+    payload = request.json or {}
     records = payload.get("invoices", [])
     staff_name = payload.get("staff_name", "Staff User")
     batch_name = payload.get("batch_name", "General Batch")
@@ -277,7 +243,6 @@ def save_batch():
                 conn.close()
             except Exception:
                 pass
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
