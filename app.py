@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
+import io
 import json
 import re
 import time
 import pymysql
 from datetime import datetime
 from werkzeug.utils import secure_filename
+from PIL import Image
 from google import genai
 from google.genai import types
 
@@ -36,23 +38,6 @@ def get_client():
         raise Exception("GOOGLE_API_KEY is not set in Render Environment variables")
     return genai.Client(api_key=api_key)
 
-def get_available_flash_models(client):
-    """Dynamically queries the API for currently active models that support content generation."""
-    valid_models = []
-    try:
-        for m in client.models.list():
-            name = m.name.replace("models/", "")
-            # Filter for active Flash models capable of vision/document parsing
-            if "flash" in name.lower():
-                valid_models.append(name)
-    except Exception as e:
-        print(f"Model listing fallback: {e}")
-    
-    # Fallback to standard 2.x flash endpoints if listing is restricted
-    if not valid_models:
-        valid_models = ["gemini-2.0-flash", "gemini-2.5-flash"]
-    return valid_models
-
 def clean_float(val):
     if not val or val == "Not found":
         return 0.0
@@ -67,16 +52,42 @@ def clean_float(val):
             return 0.0
     return 0.0
 
+def prepare_file_payload(file_path):
+    """
+    Downscales large phone/scanner images in-memory to speed up transfer & OCR
+    without losing text clarity.
+    """
+    ext = file_path.lower().split('.')[-1]
+    
+    if ext == "pdf":
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return types.Part.from_bytes(data=data, mime_type="application/pdf")
+    
+    # Compress & downscale images for high-speed OCR
+    with Image.open(file_path) as img:
+        img = img.convert("RGB")
+        max_dim = 1600
+        if max(img.size) > max_dim:
+            scale = max_dim / float(max(img.size))
+            new_size = (int(img.size[0] * scale), int(img.size[1] * scale))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85, optimize=True)
+        img_bytes = buffer.getvalue()
+        return types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
+
 def analyze_invoice(file_path):
     client = get_client()
-    uploaded_ref = client.files.upload(file=file_path)
+    file_part = prepare_file_payload(file_path)
 
     prompt = """
-Extract Indian GST tax invoice data into pure JSON format:
+Extract Indian GST tax invoice data as pure JSON.
 {
   "company_name": "Supplier or Vendor Name",
   "invoice_no": "Invoice Number",
-  "date": "Date of invoice",
+  "date": "Invoice Date",
   "gst_no": "15-digit GSTIN",
   "gst_percentage": "GST rate(s) applied",
   "net_amount": "0.00",
@@ -90,49 +101,34 @@ Extract Indian GST tax invoice data into pure JSON format:
   "type": "Manual or Computer Generated"
 }
 Rules:
-- "net_amount" is the taxable value before GST.
-- "grand_total" is the final payable total.
-- Output pure JSON only without markdown formatting.
+- "net_amount" is taxable value BEFORE tax.
+- "grand_total" is final payable value.
+- Return ONLY valid JSON. No backticks, markdown, or extra explanations.
 """
 
-    models_to_try = get_available_flash_models(client)
+    # Fast priority list: Instant model access without listing APIs
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
     response = None
     last_error = None
 
     for model_name in models_to_try:
-        for attempt in range(3):
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[uploaded_ref, prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.1
-                    )
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[file_part, prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1
                 )
-                if response and response.text:
-                    break
-            except Exception as err:
-                last_error = err
-                err_str = str(err)
-                # Retry on transient server busy (503) or rate limits (429)
-                if any(code in err_str for code in ["503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED"]):
-                    time.sleep(2 * (attempt + 1))
-                    continue
-                else:
-                    # Non-retriable error for this specific model, proceed to next candidate
-                    break
-        if response and response.text:
-            break
-
-    # Clean up uploaded cloud file reference to maintain storage quotas
-    try:
-        client.files.delete(name=uploaded_ref.name)
-    except Exception:
-        pass
+            )
+            if response and response.text:
+                break
+        except Exception as err:
+            last_error = err
+            continue
 
     if not response or not response.text:
-        raise Exception(f"AI service temporarily unavailable: {last_error}")
+        raise Exception(f"Extraction failed: {last_error}")
 
     raw_text = response.text.strip()
     if raw_text.startswith("```"):
