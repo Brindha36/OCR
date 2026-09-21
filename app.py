@@ -12,12 +12,13 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+# Dynamic Database Configuration using Environment Variables
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "",
-    "database": "invoice_db",
-    "port": 3306,
+    "host": os.environ.get("DB_HOST", "uniformkart.com"),
+    "user": os.environ.get("DB_USER", "uniformk_sowmya"),
+    "password": os.environ.get("DB_PASSWORD", ""),
+    "database": os.environ.get("DB_NAME", "uniformk_sowmya"),
+    "port": int(os.environ.get("DB_PORT", 3306)),
     "cursorclass": pymysql.cursors.DictCursor
 }
 
@@ -38,14 +39,18 @@ def get_model(client):
                 return m.name
     except Exception:
         pass
-    return "gemini-3.6-flash"
+    return "gemini-2.5-flash"
 
 def load_file(path):
     if path.lower().endswith(".pdf"):
-        pages = convert_from_path(
-            path,
-            poppler_path=r"C:\poppler\Library\bin"
-        )
+        # On Render / Linux, poppler is in system PATH; on Windows it uses the local path
+        if os.name == "nt":
+            pages = convert_from_path(
+                path,
+                poppler_path=r"C:\poppler\Library\bin"
+            )
+        else:
+            pages = convert_from_path(path)
         return pages[0]
     return Image.open(path)
 
@@ -226,5 +231,5 @@ def save_batch():
 
 
 if __name__ == "__main__":
-    print("Flask running with Master-Detail Two-Table Architecture...")
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port)
