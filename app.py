@@ -4,7 +4,6 @@ import json
 import re
 import pymysql
 from PIL import Image
-from pdf2image import convert_from_path
 from google import genai
 from google.genai import types
 
@@ -45,26 +44,13 @@ def get_model(client):
         pass
     return "gemini-2.5-flash"
 
-def load_file(path):
-    if path.lower().endswith(".pdf"):
-        if os.name == "nt":
-            pages = convert_from_path(
-                path,
-                poppler_path=r"C:\poppler\Library\bin"
-            )
-        else:
-            pages = convert_from_path(path)
-        return pages[0]
-    return Image.open(path)
-
 def clean_float(val):
-    """Safely extracts a valid decimal float number from a string."""
+    """Safely extracts a valid decimal float number from any string."""
     if not val or val == "Not found":
         return 0.0
     if isinstance(val, (int, float)):
         return float(val)
     
-    # Remove currency symbols and comma separators
     cleaned = str(val).replace(",", "").strip()
     match = re.search(r"[-+]?\d*\.\d+|\d+", cleaned)
     if match:
@@ -77,10 +63,10 @@ def clean_float(val):
 def analyze_invoice(file_path):
     client = get_client()
     model = get_model(client)
-    img = load_file(file_path)
 
+    # Gemini handles both images and PDFs natively without needing Poppler!
     prompt = """
-You are an expert Indian GST tax invoice auditor. Carefully inspect the entire document image and extract the accurate financial values into valid JSON.
+You are an expert Indian GST tax invoice auditor. Carefully inspect the entire document image/PDF and extract the accurate financial values into valid JSON.
 
 JSON Structure:
 {
@@ -89,34 +75,41 @@ JSON Structure:
   "date": "YYYY-MM-DD or DD/MM/YYYY",
   "gst_no": "15-digit GSTIN of seller (e.g. 33AAAAA0000A1Z5)",
   "gst_percentage": "Rate percentage like 5%, 12%, 18%, or Multiple",
-  "net_amount": 0.00,
-  "cgst_amount": 0.00,
-  "sgst_amount": 0.00,
-  "igst_amount": 0.00,
-  "gst_5_amount": 0.00,
-  "gst_12_amount": 0.00,
-  "total_gst_amount": 0.00,
-  "grand_total": 0.00,
+  "net_amount": "0.00",
+  "cgst_amount": "0.00",
+  "sgst_amount": "0.00",
+  "igst_amount": "0.00",
+  "gst_5_amount": "0.00",
+  "gst_12_amount": "0.00",
+  "total_gst_amount": "0.00",
+  "grand_total": "0.00",
   "type": "Manual or Computer Generated"
 }
 
 Extraction Rules:
-1. "net_amount": The total TAXABLE amount BEFORE tax/GST is added. (Also labeled as 'Subtotal', 'Taxable Value', or 'Total Before Tax'). Do NOT confuse with Grand Total.
-2. "cgst_amount": Central GST amount. If none, return 0.00.
-3. "sgst_amount": State GST amount. If none, return 0.00.
-4. "igst_amount": Integrated GST amount (interstate). If none, return 0.00.
+1. "net_amount": The total TAXABLE amount BEFORE tax/GST is added (Subtotal / Taxable Value).
+2. "cgst_amount": Central GST amount (if any; else 0.00).
+3. "sgst_amount": State GST amount (if any; else 0.00).
+4. "igst_amount": Integrated GST amount (if any; else 0.00).
 5. "gst_5_amount": Tax amount specifically charged at 5% GST rate (if itemized; else 0.00).
 6. "gst_12_amount": Tax amount specifically charged at 12% GST rate (if itemized; else 0.00).
-7. "total_gst_amount": Sum of all taxes (CGST + SGST + IGST).
-8. "grand_total": The FINAL payable amount including all taxes, round-offs, freight, and discounts. (Also labeled as 'Total Amount Payable', 'Invoice Total', 'Net Payable').
-9. Mathematical verification: Check if net_amount + total_gst_amount is approximately equal to grand_total.
-10. Return ONLY valid pure JSON with numbers formatted as numbers or clean numeric strings without currency symbols like ₹ or Rs.
+7. "total_gst_amount": Sum of all GST taxes (CGST + SGST + IGST).
+8. "grand_total": FINAL payable invoice amount including all taxes, round-offs, freight, and discounts.
+9. Return ONLY valid pure JSON.
 """
+
+    if file_path.lower().endswith(".pdf"):
+        with open(file_path, "rb") as f:
+            pdf_bytes = f.read()
+        file_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
+    else:
+        img = Image.open(file_path)
+        file_part = img
 
     try:
         response = client.models.generate_content(
             model=model,
-            contents=[prompt, img],
+            contents=[prompt, file_part],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0.1
@@ -124,10 +117,9 @@ Extraction Rules:
         )
         raw_text = response.text.strip()
     except Exception:
-        # Fallback if config is unsupported by specific version
         response = client.models.generate_content(
             model=model,
-            contents=[prompt, img]
+            contents=[prompt, file_part]
         )
         raw_text = response.text.strip()
 
@@ -138,13 +130,12 @@ Extraction Rules:
 
     try:
         data = json.loads(raw_text)
-        # Format amounts cleanly as 2-decimal strings for the frontend
         for key in ["net_amount", "cgst_amount", "sgst_amount", "igst_amount",
                     "gst_5_amount", "gst_12_amount", "total_gst_amount", "grand_total"]:
             data[key] = f"{clean_float(data.get(key, 0.0)):.2f}"
         return data
     except Exception as e:
-        print(f"JSON Parse fallback triggered: {e}")
+        print(f"JSON parsing error: {e}")
         return {
             "company_name": "Not found",
             "invoice_no": "Not found",
@@ -188,13 +179,17 @@ def analyze():
     if file.filename == "":
         return jsonify({"success": False, "error": "No file selected"}), 400
 
-    filename = file.filename
-    path = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(path)
+    try:
+        filename = file.filename
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(path)
 
-    data = analyze_invoice(path)
-    data["filename"] = filename
-    return jsonify({"success": True, "data": data})
+        data = analyze_invoice(path)
+        data["filename"] = filename
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        print(f"Analysis error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 200
 
 @app.route("/save-batch", methods=["POST"])
 def save_batch():
@@ -215,8 +210,9 @@ def save_batch():
     b_gst = sum(clean_float(r.get("total_gst_amount")) for r in records)
     b_grand = sum(clean_float(r.get("grand_total")) for r in records)
 
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         with conn.cursor() as cursor:
             master_sql = """
                 INSERT INTO batch_uploads (
@@ -262,15 +258,15 @@ def save_batch():
             cursor.executemany(detail_sql, detail_rows)
             conn.commit()
 
-        conn.close()
         return jsonify({"success": True, "batch_id": batch_id, "count": len(records)})
     except Exception as e:
-        if 'conn' in locals() and conn:
+        return jsonify({"success": False, "error": str(e)}), 200
+    finally:
+        if conn:
             try:
                 conn.close()
             except Exception:
                 pass
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":
