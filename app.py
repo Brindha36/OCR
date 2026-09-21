@@ -8,7 +8,7 @@ from google import genai
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = "uploads"
+UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -125,7 +125,7 @@ Rules:
             "type": "Not found"
         }
 
-@app.route("/uploads/<filename>")
+@app.route("/uploaded_files/<filename>")
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
