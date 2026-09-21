@@ -14,15 +14,15 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # Dynamic Database Configuration using Environment Variables
 DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "uniformkart.com"),
-    "user": os.environ.get("DB_USER", "uniformk_sowmya"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-    "database": os.environ.get("DB_NAME", "uniformk_sowmya"),
-    "port": int(os.environ.get("DB_PORT", 3306)),
-    "connect_timeout": 3,  # Times out after 3 seconds instead of hanging the entire server
+    "host": os.environ.get("DB_HOST"),
+    "user": os.environ.get("DB_USER"),
+    "password": os.environ.get("DB_PASSWORD"),
+    "database": os.environ.get("DB_NAME", "invoice_db"),
+    "port": int(os.environ.get("DB_PORT", 4000)),
+    "connect_timeout": 10,
+    "ssl": {"ssl_mode": "REQUIRED"},
     "cursorclass": pymysql.cursors.DictCursor
 }
-
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG)
 
