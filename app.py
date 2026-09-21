@@ -11,7 +11,6 @@ from google.genai import types
 
 app = Flask(__name__)
 
-# Ensure absolute path for storage
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
 os.makedirs(INVOICE_STORAGE_FOLDER, exist_ok=True)
@@ -37,6 +36,23 @@ def get_client():
         raise Exception("GOOGLE_API_KEY is not set in Render Environment variables")
     return genai.Client(api_key=api_key)
 
+def get_available_flash_models(client):
+    """Dynamically queries the API for currently active models that support content generation."""
+    valid_models = []
+    try:
+        for m in client.models.list():
+            name = m.name.replace("models/", "")
+            # Filter for active Flash models capable of vision/document parsing
+            if "flash" in name.lower():
+                valid_models.append(name)
+    except Exception as e:
+        print(f"Model listing fallback: {e}")
+    
+    # Fallback to standard 2.x flash endpoints if listing is restricted
+    if not valid_models:
+        valid_models = ["gemini-2.0-flash", "gemini-2.5-flash"]
+    return valid_models
+
 def clean_float(val):
     if not val or val == "Not found":
         return 0.0
@@ -56,15 +72,13 @@ def analyze_invoice(file_path):
     uploaded_ref = client.files.upload(file=file_path)
 
     prompt = """
-You are an expert Indian GST tax invoice auditor. Carefully inspect this document and extract the exact details into valid JSON.
-
-JSON Structure:
+Extract Indian GST tax invoice data into pure JSON format:
 {
-  "company_name": "Seller / Supplier / Vendor Name",
-  "invoice_no": "Invoice or Bill Number",
-  "date": "YYYY-MM-DD or DD/MM/YYYY",
-  "gst_no": "15-digit GSTIN of seller (e.g. 33AAAAA0000A1Z5)",
-  "gst_percentage": "Rate percentage like 5%, 12%, 18%, or Multiple",
+  "company_name": "Supplier or Vendor Name",
+  "invoice_no": "Invoice Number",
+  "date": "Date of invoice",
+  "gst_no": "15-digit GSTIN",
+  "gst_percentage": "GST rate(s) applied",
   "net_amount": "0.00",
   "cgst_amount": "0.00",
   "sgst_amount": "0.00",
@@ -75,23 +89,18 @@ JSON Structure:
   "grand_total": "0.00",
   "type": "Manual or Computer Generated"
 }
-
 Rules:
-- "net_amount": Total taxable value BEFORE tax.
-- "cgst_amount", "sgst_amount", "igst_amount": Respective tax values.
-- "gst_5_amount", "gst_12_amount": Specific tax slabs if specified.
-- "total_gst_amount": Total tax sum.
-- "grand_total": Final payable total.
-- Return pure JSON only without backticks or markdown fences.
+- "net_amount" is the taxable value before GST.
+- "grand_total" is the final payable total.
+- Output pure JSON only without markdown formatting.
 """
 
-    # Model priority chain to handle temporary 503 high-demand surges
-    candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_try = get_available_flash_models(client)
     response = None
     last_error = None
 
-    for model_name in candidate_models:
-        for attempt in range(2):  # Try twice per model with a short pause
+    for model_name in models_to_try:
+        for attempt in range(3):
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -106,17 +115,24 @@ Rules:
             except Exception as err:
                 last_error = err
                 err_str = str(err)
-                # If overloaded (503 / 429), pause briefly before retry
-                if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str:
-                    time.sleep(1.5)
+                # Retry on transient server busy (503) or rate limits (429)
+                if any(code in err_str for code in ["503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED"]):
+                    time.sleep(2 * (attempt + 1))
                     continue
                 else:
+                    # Non-retriable error for this specific model, proceed to next candidate
                     break
         if response and response.text:
             break
 
+    # Clean up uploaded cloud file reference to maintain storage quotas
+    try:
+        client.files.delete(name=uploaded_ref.name)
+    except Exception:
+        pass
+
     if not response or not response.text:
-        raise Exception(f"AI Service busy across models: {last_error}")
+        raise Exception(f"AI service temporarily unavailable: {last_error}")
 
     raw_text = response.text.strip()
     if raw_text.startswith("```"):
