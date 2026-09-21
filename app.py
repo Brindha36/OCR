@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
 import re
+import time
 import pymysql
 from datetime import datetime
 from werkzeug.utils import secure_filename
@@ -52,8 +53,6 @@ def clean_float(val):
 
 def analyze_invoice(file_path):
     client = get_client()
-
-    # Upload using Gemini File API (fast and works reliably for both PDF and Images)
     uploaded_ref = client.files.upload(file=file_path)
 
     prompt = """
@@ -83,17 +82,41 @@ Rules:
 - "gst_5_amount", "gst_12_amount": Specific tax slabs if specified.
 - "total_gst_amount": Total tax sum.
 - "grand_total": Final payable total.
-- Return pure JSON only.
+- Return pure JSON only without backticks or markdown fences.
 """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[uploaded_ref, prompt],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.1
-        )
-    )
+    # Model priority chain to handle temporary 503 high-demand surges
+    candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    response = None
+    last_error = None
+
+    for model_name in candidate_models:
+        for attempt in range(2):  # Try twice per model with a short pause
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[uploaded_ref, prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.1
+                    )
+                )
+                if response and response.text:
+                    break
+            except Exception as err:
+                last_error = err
+                err_str = str(err)
+                # If overloaded (503 / 429), pause briefly before retry
+                if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str:
+                    time.sleep(1.5)
+                    continue
+                else:
+                    break
+        if response and response.text:
+            break
+
+    if not response or not response.text:
+        raise Exception(f"AI Service busy across models: {last_error}")
 
     raw_text = response.text.strip()
     if raw_text.startswith("```"):
