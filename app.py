@@ -1,14 +1,16 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
+import re
 import pymysql
 from PIL import Image
 from pdf2image import convert_from_path
 from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = "uploaded_files"
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploaded_files")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -23,6 +25,7 @@ DB_CONFIG = {
     "ssl": {"ssl_mode": "REQUIRED"},
     "cursorclass": pymysql.cursors.DictCursor
 }
+
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG)
 
@@ -44,7 +47,6 @@ def get_model(client):
 
 def load_file(path):
     if path.lower().endswith(".pdf"):
-        # On Render / Linux, poppler is in system PATH; on Windows it uses the local path
         if os.name == "nt":
             pages = convert_from_path(
                 path,
@@ -56,13 +58,21 @@ def load_file(path):
     return Image.open(path)
 
 def clean_float(val):
+    """Safely extracts a valid decimal float number from a string."""
     if not val or val == "Not found":
         return 0.0
-    try:
-        cleaned = "".join(c for c in str(val) if c.isdigit() or c == ".")
-        return float(cleaned) if cleaned else 0.0
-    except ValueError:
-        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    # Remove currency symbols and comma separators
+    cleaned = str(val).replace(",", "").strip()
+    match = re.search(r"[-+]?\d*\.\d+|\d+", cleaned)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            return 0.0
+    return 0.0
 
 def analyze_invoice(file_path):
     client = get_client()
@@ -70,44 +80,71 @@ def analyze_invoice(file_path):
     img = load_file(file_path)
 
     prompt = """
-Extract invoice details and return ONLY a valid JSON object:
+You are an expert Indian GST tax invoice auditor. Carefully inspect the entire document image and extract the accurate financial values into valid JSON.
+
+JSON Structure:
 {
-  "company_name": "",
-  "invoice_no": "",
-  "date": "",
-  "gst_no": "",
-  "gst_percentage": "",
-  "net_amount": "0.00",
-  "cgst_amount": "0.00",
-  "sgst_amount": "0.00",
-  "igst_amount": "0.00",
-  "gst_5_amount": "0.00",
-  "gst_12_amount": "0.00",
-  "total_gst_amount": "0.00",
-  "grand_total": "0.00",
+  "company_name": "Seller / Supplier / Vendor Name",
+  "invoice_no": "Invoice or Bill Number",
+  "date": "YYYY-MM-DD or DD/MM/YYYY",
+  "gst_no": "15-digit GSTIN of seller (e.g. 33AAAAA0000A1Z5)",
+  "gst_percentage": "Rate percentage like 5%, 12%, 18%, or Multiple",
+  "net_amount": 0.00,
+  "cgst_amount": 0.00,
+  "sgst_amount": 0.00,
+  "igst_amount": 0.00,
+  "gst_5_amount": 0.00,
+  "gst_12_amount": 0.00,
+  "total_gst_amount": 0.00,
+  "grand_total": 0.00,
   "type": "Manual or Computer Generated"
 }
 
-Rules:
-- Return ONLY plain valid JSON without markdown fences.
-- Extract numbers cleanly (e.g. 1500.00). If not applicable, return "0.00".
-- "net_amount" is taxable amount before GST.
+Extraction Rules:
+1. "net_amount": The total TAXABLE amount BEFORE tax/GST is added. (Also labeled as 'Subtotal', 'Taxable Value', or 'Total Before Tax'). Do NOT confuse with Grand Total.
+2. "cgst_amount": Central GST amount. If none, return 0.00.
+3. "sgst_amount": State GST amount. If none, return 0.00.
+4. "igst_amount": Integrated GST amount (interstate). If none, return 0.00.
+5. "gst_5_amount": Tax amount specifically charged at 5% GST rate (if itemized; else 0.00).
+6. "gst_12_amount": Tax amount specifically charged at 12% GST rate (if itemized; else 0.00).
+7. "total_gst_amount": Sum of all taxes (CGST + SGST + IGST).
+8. "grand_total": The FINAL payable amount including all taxes, round-offs, freight, and discounts. (Also labeled as 'Total Amount Payable', 'Invoice Total', 'Net Payable').
+9. Mathematical verification: Check if net_amount + total_gst_amount is approximately equal to grand_total.
+10. Return ONLY valid pure JSON with numbers formatted as numbers or clean numeric strings without currency symbols like ₹ or Rs.
 """
 
-    response = client.models.generate_content(
-        model=model,
-        contents=[prompt, img]
-    )
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=[prompt, img],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1
+            )
+        )
+        raw_text = response.text.strip()
+    except Exception:
+        # Fallback if config is unsupported by specific version
+        response = client.models.generate_content(
+            model=model,
+            contents=[prompt, img]
+        )
+        raw_text = response.text.strip()
 
-    raw_text = response.text.strip()
     if raw_text.startswith("```"):
         raw_text = raw_text.strip("`")
         if raw_text.startswith("json"):
             raw_text = raw_text[4:].strip()
 
     try:
-        return json.loads(raw_text)
-    except Exception:
+        data = json.loads(raw_text)
+        # Format amounts cleanly as 2-decimal strings for the frontend
+        for key in ["net_amount", "cgst_amount", "sgst_amount", "igst_amount",
+                    "gst_5_amount", "gst_12_amount", "total_gst_amount", "grand_total"]:
+            data[key] = f"{clean_float(data.get(key, 0.0)):.2f}"
+        return data
+    except Exception as e:
+        print(f"JSON Parse fallback triggered: {e}")
         return {
             "company_name": "Not found",
             "invoice_no": "Not found",
@@ -140,7 +177,6 @@ def index():
         conn.close()
     except Exception as e:
         print(f"Database connection skipped/failed: {e}")
-        # Page still loads cleanly even if cPanel blocks port 3306
     return render_template("index.html", batches=batches)
 
 @app.route("/analyze", methods=["POST"])
@@ -170,7 +206,6 @@ def save_batch():
     if not records:
         return jsonify({"success": False, "error": "No invoices to save"}), 400
 
-    # Calculate master summary totals
     b_net = sum(clean_float(r.get("net_amount")) for r in records)
     b_cgst = sum(clean_float(r.get("cgst_amount")) for r in records)
     b_sgst = sum(clean_float(r.get("sgst_amount")) for r in records)
@@ -183,7 +218,6 @@ def save_batch():
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # 1. Insert into Master Table (batch_uploads)
             master_sql = """
                 INSERT INTO batch_uploads (
                     batch_name, staff_name, total_invoices, batch_net_total,
@@ -197,7 +231,6 @@ def save_batch():
             ))
             batch_id = cursor.lastrowid
 
-            # 2. Insert into Detail Table (invoice_items) linked by batch_id
             detail_sql = """
                 INSERT INTO invoice_items (
                     batch_id, filename, company_name, invoice_no, invoice_date, gst_no,
@@ -232,7 +265,11 @@ def save_batch():
         conn.close()
         return jsonify({"success": True, "batch_id": batch_id, "count": len(records)})
     except Exception as e:
-        conn.close()
+        if 'conn' in locals() and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
         return jsonify({"success": False, "error": str(e)}), 500
 
 
