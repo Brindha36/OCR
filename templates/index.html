@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Two-Tier Master-Detail Invoice System</title>
-    <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
-    <link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
-    <link href="[https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap)" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #2563eb;
@@ -21,6 +21,7 @@
             --badge-text: #0369a1;
             --warning-bg: #fef3c7;
             --warning-text: #b45309;
+            --danger: #ef4444;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
@@ -114,7 +115,6 @@
         .preview-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
         .preview-container iframe { width: 100%; height: 100%; border: none; }
 
-        /* Master Summary Stat Cards */
         .summary-cards {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -144,7 +144,23 @@
         }
         thead { background: #f8fafc; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
         th { padding: 12px; font-weight: 600; color: var(--text-muted); text-align: left; }
-        td { padding: 12px; border-bottom: 1px solid var(--border); }
+        td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+
+        .editable-cell {
+            padding: 4px 6px;
+            border-radius: 4px;
+            outline: none;
+            border: 1px dashed transparent;
+        }
+        .editable-cell:hover {
+            border-color: #94a3b8;
+            background: #f1f5f9;
+        }
+        .editable-cell:focus {
+            border-color: var(--primary);
+            background: #ffffff;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+        }
 
         .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 3px 6px; border-radius: 4px; font-weight: 600; }
         .badge-saved { background: #ecfdf5; color: #047857; padding: 3px 6px; border-radius: 4px; font-weight: 600; }
@@ -217,7 +233,7 @@
 
         <!-- Detailed Invoice Table -->
         <div class="panel-title" style="margin-top: 10px;">
-            <span style="font-size: 0.85rem; color: var(--text-muted);">Detail Items Table (`invoice_items`)</span>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Detail Items Table (Tip: Click values to edit if OCR misreads)</span>
         </div>
 
         <div class="table-wrapper">
@@ -229,7 +245,7 @@
                         <th>Invoice No</th>
                         <th>Date</th>
                         <th>GST No</th>
-                        <th>Net Amt</th>
+                        <th>Net Amt (Taxable)</th>
                         <th>CGST</th>
                         <th>SGST</th>
                         <th>IGST</th>
@@ -318,46 +334,65 @@
         if (!file) return;
 
         addBtn.disabled = true;
-        btnText.textContent = 'Extracting...';
+        btnText.textContent = 'Extracting (AI)...';
 
         const formData = new FormData();
         formData.append('invoice', file);
 
         try {
             const res = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await res.json();
+            const resText = await res.text();
+
+            let data;
+            try {
+                data = JSON.parse(resText);
+            } catch (err) {
+                // If HTML error page was returned by server
+                throw new Error("Server error or timeout. Please check your Render service logs.");
+            }
 
             if (data.success) {
                 emptyRow.style.display = 'none';
+                const invIndex = stagedInvoices.length;
                 stagedInvoices.push(data.data);
 
                 const tr = document.createElement('tr');
                 tr.className = 'staged-row';
                 tr.innerHTML = `
                     <td><span class="badge-pending">Queue</span></td>
-                    <td style="font-weight: 600;">${data.data.company_name}</td>
-                    <td>${data.data.invoice_no}</td>
-                    <td>${data.data.date}</td>
-                    <td>${data.data.gst_no}</td>
-                    <td>₹ ${num(data.data.net_amount).toFixed(2)}</td>
-                    <td>${data.data.cgst_amount}</td>
-                    <td>${data.data.sgst_amount}</td>
-                    <td>${data.data.igst_amount}</td>
-                    <td>${data.data.gst_5_amount}</td>
-                    <td>${data.data.gst_12_amount}</td>
-                    <td style="font-weight: 600; color: var(--primary);">₹ ${num(data.data.total_gst_amount).toFixed(2)}</td>
-                    <td style="font-weight: 700; color: var(--success);">₹ ${num(data.data.grand_total).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="company_name" data-index="${invIndex}" style="font-weight: 600;">${data.data.company_name}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="invoice_no" data-index="${invIndex}">${data.data.invoice_no}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="date" data-index="${invIndex}">${data.data.date}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="gst_no" data-index="${invIndex}">${data.data.gst_no}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="net_amount" data-index="${invIndex}">${num(data.data.net_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="cgst_amount" data-index="${invIndex}">${num(data.data.cgst_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="sgst_amount" data-index="${invIndex}">${num(data.data.sgst_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="igst_amount" data-index="${invIndex}">${num(data.data.igst_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="gst_5_amount" data-index="${invIndex}">${num(data.data.gst_5_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="gst_12_amount" data-index="${invIndex}">${num(data.data.gst_12_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="total_gst_amount" data-index="${invIndex}" style="font-weight: 600; color: var(--primary);">${num(data.data.total_gst_amount).toFixed(2)}</td>
+                    <td class="editable-cell" contenteditable="true" data-field="grand_total" data-index="${invIndex}" style="font-weight: 700; color: var(--success);">${num(data.data.grand_total).toFixed(2)}</td>
                 `;
                 detailTableBody.appendChild(tr);
+
+                // Add live listener for manual corrections in the table
+                tr.querySelectorAll('.editable-cell').forEach(cell => {
+                    cell.addEventListener('blur', function() {
+                        const idx = parseInt(this.getAttribute('data-index'));
+                        const field = this.getAttribute('data-field');
+                        stagedInvoices[idx][field] = this.innerText.trim();
+                        updateMasterSummary();
+                    });
+                });
 
                 updateMasterSummary();
                 invoiceInput.value = '';
                 fileChosenText.textContent = '';
             } else {
-                alert(data.error || 'Failed to extract invoice');
+                alert('Extraction notice: ' + (data.error || 'Could not parse invoice'));
             }
         } catch (err) {
-            alert('Error: ' + err.message);
+            alert('Notice: ' + err.message);
         } finally {
             addBtn.disabled = false;
             btnText.textContent = '+ Extract & Append Invoice';
@@ -380,7 +415,14 @@
                     staff_name: staffNameInput.value
                 })
             });
-            const data = await res.json();
+
+            const resText = await res.text();
+            let data;
+            try {
+                data = JSON.parse(resText);
+            } catch(e) {
+                throw new Error("Server returned non-JSON. Verify TiDB database status in Render.");
+            }
 
             if (data.success) {
                 document.querySelectorAll('.staged-row .badge-pending').forEach(badge => {
