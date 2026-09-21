@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Two-Tier Master-Detail Invoice System</title>
+    <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
+    <link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
+    <link href="[https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap)" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --surface: #ffffff;
+            --background: #f8fafc;
+            --border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --success: #16a34a;
+            --badge-bg: #e0f2fe;
+            --badge-text: #0369a1;
+            --warning-bg: #fef3c7;
+            --warning-text: #b45309;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--background); color: var(--text-main); min-height: 100vh; }
+
+        header {
+            background-color: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .brand { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+        .workspace {
+            max-width: 1750px;
+            margin: 24px auto;
+            padding: 0 24px;
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 24px;
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .dropzone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            background: #f8fafc;
+            cursor: pointer;
+            position: relative;
+        }
+        .dropzone:hover { border-color: var(--primary); background: #f0f7ff; }
+        .dropzone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .btn-action {
+            background-color: var(--primary);
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-action:hover { background-color: var(--primary-hover); }
+        .btn-action:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-success { background-color: var(--success); }
+        .btn-success:hover { background-color: #15803d; }
+
+        .preview-container {
+            height: 320px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #f8fafc;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .preview-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .preview-container iframe { width: 100%; height: 100%; border: none; }
+
+        /* Master Summary Stat Cards */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .card-stat {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            padding: 14px;
+            border-radius: 8px;
+        }
+        .card-stat-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+        .card-stat-val { font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-top: 4px; }
+        .card-stat-val.highlight { color: var(--success); }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            max-height: 480px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        thead { background: #f8fafc; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
+        th { padding: 12px; font-weight: 600; color: var(--text-muted); text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid var(--border); }
+
+        .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 3px 6px; border-radius: 4px; font-weight: 600; }
+        .badge-saved { background: #ecfdf5; color: #047857; padding: 3px 6px; border-radius: 4px; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand">📑 Multi-Invoice Batch Processing (Master-Detail Architecture)</div>
+    <div style="font-size: 0.85rem; color: var(--text-muted);">Database: <b>invoice_db</b></div>
+</header>
+
+<main class="workspace">
+    <!-- Left: Upload Step -->
+    <section class="panel">
+        <div class="panel-title">Upload Invoices</div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Batch Description</label>
+            <input type="text" id="batchNameInput" value="September 2026 Invoices" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+            
+            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-top: 4px;">Staff Name</label>
+            <input type="text" id="staffNameInput" value="Accounts Team" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px;">
+        </div>
+
+        <form id="uploadForm" style="margin-top: 8px;">
+            <div class="dropzone">
+                <input type="file" id="invoiceInput" accept=".pdf,image/*" required>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Click or drag invoice (PDF / Image)</div>
+                <div id="fileChosenText" style="font-size: 0.75rem; color: var(--primary); font-weight: 600; margin-top: 4px;"></div>
+            </div>
+            <button type="submit" id="addBtn" class="btn-action" style="width: 100%; margin-top: 10px; justify-content: center;">
+                <span id="btnText">+ Extract & Append Invoice</span>
+            </button>
+        </form>
+
+        <div class="preview-container" id="previewWrapper">
+            <div style="color: var(--text-muted); font-size: 0.8rem;">Invoice preview</div>
+        </div>
+    </section>
+
+    <!-- Right: Master Batch Summary & Detail Table -->
+    <section class="panel">
+        <div class="panel-title">
+            <span>Master Batch Summary (Calculated Live)</span>
+            <button class="btn-action btn-success" id="saveBatchBtn" disabled>
+                💾 Commit Batch to MySQL (2 Tables)
+            </button>
+        </div>
+
+        <!-- Master Table Stat Cards -->
+        <div class="summary-cards">
+            <div class="card-stat">
+                <div class="card-stat-label">Invoices Count</div>
+                <div class="card-stat-val" id="statCount">0</div>
+            </div>
+            <div class="card-stat">
+                <div class="card-stat-label">Net Total (Taxable)</div>
+                <div class="card-stat-val" id="statNet">₹ 0.00</div>
+            </div>
+            <div class="card-stat">
+                <div class="card-stat-label">Total GST (All Taxes)</div>
+                <div class="card-stat-val" id="statGst">₹ 0.00</div>
+            </div>
+            <div class="card-stat">
+                <div class="card-stat-label">Overall Grand Total</div>
+                <div class="card-stat-val highlight" id="statGrand">₹ 0.00</div>
+            </div>
+        </div>
+
+        <!-- Detailed Invoice Table -->
+        <div class="panel-title" style="margin-top: 10px;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Detail Items Table (`invoice_items`)</span>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Company</th>
+                        <th>Invoice No</th>
+                        <th>Date</th>
+                        <th>GST No</th>
+                        <th>Net Amt</th>
+                        <th>CGST</th>
+                        <th>SGST</th>
+                        <th>IGST</th>
+                        <th>5% GST</th>
+                        <th>12% GST</th>
+                        <th>Total GST</th>
+                        <th>Grand Total</th>
+                    </tr>
+                </thead>
+                <tbody id="detailTableBody">
+                    <tr id="emptyRow">
+                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+                            No invoices queued yet. Upload files one by one to see details here.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script>
+    const invoiceInput = document.getElementById('invoiceInput');
+    const fileChosenText = document.getElementById('fileChosenText');
+    const previewWrapper = document.getElementById('previewWrapper');
+    const uploadForm = document.getElementById('uploadForm');
+    const addBtn = document.getElementById('addBtn');
+    const btnText = document.getElementById('btnText');
+    const detailTableBody = document.getElementById('detailTableBody');
+    const emptyRow = document.getElementById('emptyRow');
+    const saveBatchBtn = document.getElementById('saveBatchBtn');
+    const batchNameInput = document.getElementById('batchNameInput');
+    const staffNameInput = document.getElementById('staffNameInput');
+
+    const statCount = document.getElementById('statCount');
+    const statNet = document.getElementById('statNet');
+    const statGst = document.getElementById('statGst');
+    const statGrand = document.getElementById('statGrand');
+
+    let stagedInvoices = [];
+
+    function num(v) {
+        if (!v) return 0;
+        const clean = String(v).replace(/[^0-9.]/g, '');
+        return parseFloat(clean) || 0;
+    }
+
+    function updateMasterSummary() {
+        statCount.textContent = stagedInvoices.length;
+        const totalNet = stagedInvoices.reduce((acc, cur) => acc + num(cur.net_amount), 0);
+        const totalGst = stagedInvoices.reduce((acc, cur) => acc + num(cur.total_gst_amount), 0);
+        const totalGrand = stagedInvoices.reduce((acc, cur) => acc + num(cur.grand_total), 0);
+
+        statNet.textContent = '₹ ' + totalNet.toFixed(2);
+        statGst.textContent = '₹ ' + totalGst.toFixed(2);
+        statGrand.textContent = '₹ ' + totalGrand.toFixed(2);
+
+        saveBatchBtn.disabled = stagedInvoices.length === 0;
+    }
+
+    invoiceInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        fileChosenText.textContent = `Selected: ${file.name}`;
+        previewWrapper.innerHTML = '';
+
+        if (file.type === 'application/pdf') {
+            const iframe = document.createElement('iframe');
+            iframe.src = URL.createObjectURL(file);
+            previewWrapper.appendChild(iframe);
+        } else if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const img = document.createElement('img');
+                img.src = evt.target.result;
+                previewWrapper.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const file = invoiceInput.files[0];
+        if (!file) return;
+
+        addBtn.disabled = true;
+        btnText.textContent = 'Extracting...';
+
+        const formData = new FormData();
+        formData.append('invoice', file);
+
+        try {
+            const res = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.success) {
+                emptyRow.style.display = 'none';
+                stagedInvoices.push(data.data);
+
+                const tr = document.createElement('tr');
+                tr.className = 'staged-row';
+                tr.innerHTML = `
+                    <td><span class="badge-pending">Queue</span></td>
+                    <td style="font-weight: 600;">${data.data.company_name}</td>
+                    <td>${data.data.invoice_no}</td>
+                    <td>${data.data.date}</td>
+                    <td>${data.data.gst_no}</td>
+                    <td>₹ ${num(data.data.net_amount).toFixed(2)}</td>
+                    <td>${data.data.cgst_amount}</td>
+                    <td>${data.data.sgst_amount}</td>
+                    <td>${data.data.igst_amount}</td>
+                    <td>${data.data.gst_5_amount}</td>
+                    <td>${data.data.gst_12_amount}</td>
+                    <td style="font-weight: 600; color: var(--primary);">₹ ${num(data.data.total_gst_amount).toFixed(2)}</td>
+                    <td style="font-weight: 700; color: var(--success);">₹ ${num(data.data.grand_total).toFixed(2)}</td>
+                `;
+                detailTableBody.appendChild(tr);
+
+                updateMasterSummary();
+                invoiceInput.value = '';
+                fileChosenText.textContent = '';
+            } else {
+                alert(data.error || 'Failed to extract invoice');
+            }
+        } catch (err) {
+            alert('Error: ' + err.message);
+        } finally {
+            addBtn.disabled = false;
+            btnText.textContent = '+ Extract & Append Invoice';
+        }
+    });
+
+    saveBatchBtn.addEventListener('click', async function() {
+        if (stagedInvoices.length === 0) return;
+
+        saveBatchBtn.disabled = true;
+        saveBatchBtn.textContent = 'Committing 2 Tables...';
+
+        try {
+            const res = await fetch('/save-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    invoices: stagedInvoices,
+                    batch_name: batchNameInput.value,
+                    staff_name: staffNameInput.value
+                })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                document.querySelectorAll('.staged-row .badge-pending').forEach(badge => {
+                    badge.className = 'badge-saved';
+                    badge.textContent = `Saved (Batch #${data.batch_id})`;
+                });
+                alert(`Successfully saved batch #${data.batch_id} with ${data.count} detail invoices into MySQL!`);
+                stagedInvoices = [];
+                updateMasterSummary();
+            } else {
+                alert('Database Error: ' + data.error);
+                saveBatchBtn.disabled = false;
+            }
+        } catch (err) {
+            alert('Save failed: ' + err.message);
+            saveBatchBtn.disabled = false;
+        } finally {
+            saveBatchBtn.textContent = '💾 Commit Batch to MySQL (2 Tables)';
+        }
+    });
+</script>
+
+</body>
+</html>
