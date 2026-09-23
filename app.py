@@ -95,8 +95,6 @@ Financial Rules:
             "cgst_amount": {"type": "STRING"},
             "sgst_amount": {"type": "STRING"},
             "igst_amount": {"type": "STRING"},
-            "gst_5_amount": {"type": "STRING"},
-            "gst_12_amount": {"type": "STRING"},
             "total_gst_amount": {"type": "STRING"},
             "grand_total": {"type": "STRING"},
             "type": {
@@ -151,7 +149,7 @@ Financial Rules:
     try:
         data = json.loads(response.text.strip())
         for key in ["net_amount", "cgst_amount", "sgst_amount", "igst_amount",
-                    "gst_5_amount", "gst_12_amount", "total_gst_amount", "grand_total"]:
+                    "total_gst_amount", "grand_total"]:
             data[key] = f"{clean_float(data.get(key, 0.0)):.2f}"
 
         if data.get("type") not in ["Computer Generated", "Manual"]:
@@ -170,8 +168,6 @@ Financial Rules:
             "cgst_amount": "0.00",
             "sgst_amount": "0.00",
             "igst_amount": "0.00",
-            "gst_5_amount": "0.00",
-            "gst_12_amount": "0.00",
             "total_gst_amount": "0.00",
             "grand_total": "0.00",
             "type": "Manual"
@@ -232,8 +228,6 @@ def save_batch():
     b_cgst = sum(clean_float(r.get("cgst_amount")) for r in records)
     b_sgst = sum(clean_float(r.get("sgst_amount")) for r in records)
     b_igst = sum(clean_float(r.get("igst_amount")) for r in records)
-    b_5 = sum(clean_float(r.get("gst_5_amount")) for r in records)
-    b_12 = sum(clean_float(r.get("gst_12_amount")) for r in records)
     b_gst = sum(clean_float(r.get("total_gst_amount")) for r in records)
     b_grand = sum(clean_float(r.get("grand_total")) for r in records)
 
@@ -245,12 +239,12 @@ def save_batch():
                 INSERT INTO batch_uploads (
                     batch_name, staff_name, total_invoices, batch_net_total,
                     batch_cgst_total, batch_sgst_total, batch_igst_total,
-                    batch_gst_5_total, batch_gst_12_total, batch_total_gst, batch_grand_total
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    batch_total_gst, batch_grand_total
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(master_sql, (
                 batch_name, staff_name, len(records), b_net,
-                b_cgst, b_sgst, b_igst, b_5, b_12, b_gst, b_grand
+                b_cgst, b_sgst, b_igst, b_gst, b_grand
             ))
             batch_id = cursor.lastrowid
 
@@ -258,8 +252,8 @@ def save_batch():
                 INSERT INTO invoice_items (
                     batch_id, filename, company_name, invoice_no, invoice_date, gst_no,
                     gst_percentage, net_amount, cgst_amount, sgst_amount, igst_amount,
-                    gst_5_amount, gst_12_amount, total_gst_amount, grand_total, invoice_type
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    total_gst_amount, grand_total, invoice_type
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             detail_rows = [
                 (
@@ -274,8 +268,6 @@ def save_batch():
                     clean_float(r.get("cgst_amount")),
                     clean_float(r.get("sgst_amount")),
                     clean_float(r.get("igst_amount")),
-                    clean_float(r.get("gst_5_amount")),
-                    clean_float(r.get("gst_12_amount")),
                     clean_float(r.get("total_gst_amount")),
                     clean_float(r.get("grand_total")),
                     r.get("type", "Manual")
