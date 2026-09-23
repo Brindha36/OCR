@@ -5,13 +5,25 @@ import csv
 import json
 import re
 import time
+import decimal
 import pymysql
-from datetime import datetime
+from datetime import datetime, date
 from werkzeug.utils import secure_filename
 from google import genai
 from google.genai import types
 
 app = Flask(__name__)
+
+# JSON helper to serialize MySQL Decimal & Datetime correctly
+def serialize_row(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    return obj
+
+def clean_row(row):
+    return {k: serialize_row(v) for k, v in row.items()}
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
@@ -157,7 +169,6 @@ Financial Rules:
 
         return data
     except Exception as e:
-        print(f"JSON Parse Exception: {e}")
         return {
             "company_name": "Not found",
             "invoice_no": "Not found",
@@ -191,6 +202,7 @@ def get_dashboard_metrics():
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
+            # 1. Overall Aggregated Totals
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total_invoices,
@@ -202,38 +214,61 @@ def get_dashboard_metrics():
                     COALESCE(SUM(grand_total), 0) as grand_total
                 FROM invoice_items
             """)
-            totals = cursor.fetchone()
+            raw_totals = cursor.fetchone() or {}
+            totals = clean_row(raw_totals)
 
+            # 2. Type distribution counts
             cursor.execute("""
                 SELECT invoice_type, COUNT(*) as count 
                 FROM invoice_items 
                 GROUP BY invoice_type
             """)
             type_rows = cursor.fetchall()
-
             type_counts = {"Computer Generated": 0, "Manual": 0}
             for row in type_rows:
                 t = row.get("invoice_type")
                 if t in type_counts:
-                    type_counts[t] = row.get("count", 0)
+                    type_counts[t] = int(row.get("count", 0))
+                elif t:
+                    # Catch variations like 'Computer' or 'Manual'
+                    if "comp" in str(t).lower():
+                        type_counts["Computer Generated"] += int(row.get("count", 0))
+                    else:
+                        type_counts["Manual"] += int(row.get("count", 0))
 
+            # 3. Volume Trend (last entries or dates)
             cursor.execute("""
-                SELECT DATE_FORMAT(created_at, '%Y-%m-%d') as d_date, SUM(grand_total) as day_total
+                SELECT 
+                    COALESCE(DATE_FORMAT(created_at, '%Y-%m-%d'), 'Recent') as d_date, 
+                    SUM(grand_total) as day_total
                 FROM invoice_items
-                GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+                GROUP BY d_date
                 ORDER BY d_date DESC
                 LIMIT 7
             """)
-            trend_rows = cursor.fetchall()
-            trend_rows.reverse()
+            raw_trends = cursor.fetchall()
+            trends = [clean_row(r) for r in raw_trends]
+            trends.reverse()
+
+            # 4. Recent Invoices preview table
+            cursor.execute("""
+                SELECT id, company_name, invoice_no, invoice_date, invoice_type, grand_total, created_at
+                FROM invoice_items
+                ORDER BY id DESC
+                LIMIT 5
+            """)
+            raw_recent = cursor.fetchall()
+            recent_invoices = [clean_row(r) for r in raw_recent]
 
         return jsonify({
             "success": True,
             "totals": totals,
             "types": type_counts,
-            "trends": trend_rows
+            "trends": trends,
+            "recent": recent_invoices
         })
     except Exception as e:
+        print(f"Error in dashboard metrics: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         if conn:
@@ -333,33 +368,36 @@ def save_batch():
 
 @app.route("/api/export-preview")
 def export_preview():
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-    inv_type = request.args.get("type", "all")
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
+    inv_type = request.args.get("type", "all").strip()
 
     query = "SELECT * FROM invoice_items WHERE 1=1"
     params = []
 
+    # Only apply date filter if explicitly given
     if start_date:
-        query += " AND DATE(created_at) >= %s"
-        params.append(start_date)
+        query += " AND (DATE(created_at) >= %s OR invoice_date >= %s)"
+        params.extend([start_date, start_date])
     if end_date:
-        query += " AND DATE(created_at) <= %s"
-        params.append(end_date)
+        query += " AND (DATE(created_at) <= %s OR invoice_date <= %s)"
+        params.extend([end_date, end_date])
     if inv_type and inv_type != "all":
         query += " AND invoice_type = %s"
         params.append(inv_type)
 
-    query += " ORDER BY id DESC LIMIT 200"
+    query += " ORDER BY id DESC LIMIT 500"
 
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute(query, tuple(params))
-            rows = cursor.fetchall()
-        return jsonify({"success": True, "rows": rows})
+            raw_rows = cursor.fetchall()
+            cleaned_rows = [clean_row(r) for r in raw_rows]
+        return jsonify({"success": True, "rows": cleaned_rows})
     except Exception as e:
+        print(f"Export preview exception: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         if conn:
@@ -367,9 +405,9 @@ def export_preview():
 
 @app.route("/export-csv")
 def export_csv():
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-    inv_type = request.args.get("type", "all")
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
+    inv_type = request.args.get("type", "all").strip()
 
     query = """
         SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no,
@@ -379,11 +417,11 @@ def export_csv():
     params = []
 
     if start_date:
-        query += " AND DATE(created_at) >= %s"
-        params.append(start_date)
+        query += " AND (DATE(created_at) >= %s OR invoice_date >= %s)"
+        params.extend([start_date, start_date])
     if end_date:
-        query += " AND DATE(created_at) <= %s"
-        params.append(end_date)
+        query += " AND (DATE(created_at) <= %s OR invoice_date <= %s)"
+        params.extend([end_date, end_date])
     if inv_type and inv_type != "all":
         query += " AND invoice_type = %s"
         params.append(inv_type)
@@ -405,11 +443,12 @@ def export_csv():
         ])
 
         for r in records:
+            created_str = r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r.get("created_at") else ""
             writer.writerow([
                 r["id"], r["batch_id"], r["invoice_type"], r["company_name"], r["invoice_no"],
                 r["invoice_date"], r["gst_no"], r["net_amount"], r["cgst_amount"],
                 r["sgst_amount"], r["igst_amount"], r["total_gst_amount"], r["grand_total"],
-                r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r.get("created_at") else ""
+                created_str
             ])
 
         output.seek(0)
