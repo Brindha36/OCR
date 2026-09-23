@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+{% block title %}Upload Invoice | Batch Extraction{% endblock %}
+{% block nav_upload %}active{% endblock %}
+{% block page_title %}Multi-Invoice Batch Extraction{% endblock %}
+
+{% block head %}
+<style>
+    .workspace {
+        display: grid;
+        grid-template-columns: 290px minmax(0, 1fr);
+        gap: 18px;
+    }
+    .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 0;
+    }
+    .panel-title { font-size: 0.92rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+    .dropzone {
+        border: 2px dashed #cbd5e1;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        background: #f8fafc;
+        cursor: pointer;
+        position: relative;
+    }
+    .dropzone:hover { border-color: var(--primary); background: #f0f7ff; }
+    .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+    .btn-action {
+        background-color: var(--primary);
+        color: #fff;
+        padding: 9px 14px;
+        border-radius: 7px;
+        border: none;
+        font-weight: 600;
+        font-size: 0.82rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .btn-action:hover { background-color: var(--primary-hover); }
+    .btn-action:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-success { background-color: var(--success); }
+    .btn-success:hover { background-color: #15803d; }
+
+    .preview-container {
+        height: 260px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #f8fafc;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .preview-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .preview-container iframe { width: 100%; height: 100%; border: none; }
+
+    .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .card-stat { background: #f8fafc; border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; }
+    .card-stat-label { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+    .card-stat-val { font-size: 1.05rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .card-stat-val.highlight { color: var(--success); }
+
+    .table-wrapper { overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; max-height: 520px; width: 100%; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+    thead { background: #f8fafc; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
+    th, td { padding: 6px 5px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap !important; vertical-align: middle; }
+    th { font-weight: 600; color: var(--text-muted); font-size: 0.71rem; }
+    .num-cell { text-align: right; }
+
+    .table-input {
+        width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid transparent; background: transparent; font-size: 0.74rem; outline: none; white-space: nowrap !important;
+    }
+    .table-input:hover { border-color: #cbd5e1; background: #ffffff; }
+    .table-input:focus { border-color: var(--primary); background: #ffffff; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
+    .table-input.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .type-select, .rate-select { padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 600; border: 1px solid var(--border); outline: none; cursor: pointer; white-space: nowrap; }
+    .type-select.type-computer { background-color: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .type-select.type-manual { background-color: #fffbeb; color: #b45309; border-color: #fde68a; }
+    .rate-select { background-color: #f1f5f9; color: #334155; }
+
+    .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
+    .badge-saved { background: #ecfdf5; color: #047857; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="workspace">
+    <!-- Left: Upload Section -->
+    <section class="panel">
+        <div class="panel-title">Upload Invoices</div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted);">Batch Description</label>
+            <input type="text" id="batchNameInput" value="September 2026 Invoices" style="padding: 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.78rem;">
+            
+            <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted); margin-top: 2px;">Staff Name</label>
+            <input type="text" id="staffNameInput" value="Accounts Team" style="padding: 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.78rem;">
+        </div>
+
+        <form id="uploadForm" style="margin-top: 2px;">
+            <div class="dropzone">
+                <input type="file" id="invoiceInput" accept=".pdf,image/*" required>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Click or drag invoice (PDF / Image)</div>
+                <div id="fileChosenText" style="font-size: 0.7rem; color: var(--primary); font-weight: 600; margin-top: 4px;"></div>
+            </div>
+            <button type="submit" id="addBtn" class="btn-action" style="width: 100%; margin-top: 8px; justify-content: center;">
+                <span id="btnText">+ Extract & Append Invoice</span>
+            </button>
+        </form>
+
+        <div class="preview-container" id="previewWrapper">
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Invoice preview</div>
+        </div>
+    </section>
+
+    <!-- Right: Detail Items -->
+    <section class="panel">
+        <div class="panel-title">
+            <span>Batch Details (Keystroke Recalculation)</span>
+            <button class="btn-action btn-success" id="saveBatchBtn" disabled>
+                💾 Commit Batch to MySQL
+            </button>
+        </div>
+
+        <div class="summary-cards">
+            <div class="card-stat">
+                <div class="card-stat-label">Invoices Count</div>
+                <div class="card-stat-val" id="statCount">0</div>
+            </div>
+            <div class="card-stat">
+                <div class="card-stat-label">Net Total (Taxable)</div>
+                <div class="card-stat-val" id="statNet">₹ 0.00</div>
+            </div>
+            <div class="card-stat">
+                <div class="card-stat-label">Total GST</div>
+                <div class="card-stat-val" id="statGst">₹ 0.00</div>
+            </div>
+            <div class="card-stat">
+                <div class="card-stat-label">Overall Grand Total</div>
+                <div class="card-stat-val highlight" id="statGrand">₹ 0.00</div>
+            </div>
+        </div>
+
+        <div class="table-wrapper" style="margin-top: 6px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Rate</th>
+                        <th>Company</th>
+                        <th>Invoice No</th>
+                        <th>Date</th>
+                        <th>GST No</th>
+                        <th class="num-cell">Net Amt</th>
+                        <th class="num-cell">CGST</th>
+                        <th class="num-cell">SGST</th>
+                        <th class="num-cell">IGST</th>
+                        <th class="num-cell">Total GST</th>
+                        <th class="num-cell">Grand Total</th>
+                    </tr>
+                </thead>
+                <tbody id="detailTableBody">
+                    <tr id="emptyRow">
+                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+                            No invoices queued. Upload a file on the left to begin.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const invoiceInput = document.getElementById('invoiceInput');
+    const fileChosenText = document.getElementById('fileChosenText');
+    const previewWrapper = document.getElementById('previewWrapper');
+    const uploadForm = document.getElementById('uploadForm');
+    const addBtn = document.getElementById('addBtn');
+    const btnText = document.getElementById('btnText');
+    const detailTableBody = document.getElementById('detailTableBody');
+    const emptyRow = document.getElementById('emptyRow');
+    const saveBatchBtn = document.getElementById('saveBatchBtn');
+    const batchNameInput = document.getElementById('batchNameInput');
+    const staffNameInput = document.getElementById('staffNameInput');
+
+    const statCount = document.getElementById('statCount');
+    const statNet = document.getElementById('statNet');
+    const statGst = document.getElementById('statGst');
+    const statGrand = document.getElementById('statGrand');
+
+    let stagedInvoices = [];
+
+    function num(v) {
+        if (!v) return 0;
+        const clean = String(v).replace(/[^0-9.]/g, '');
+        return parseFloat(clean) || 0;
+    }
+
+    function cleanNumericInput(str) {
+        let cleaned = String(str).replace(/[^0-9.]/g, '');
+        const parts = cleaned.split('.');
+        if (parts.length > 2) {
+            cleaned = parts[0] + '.' + parts.slice(1).join('');
+        }
+        return cleaned;
+    }
+
+    function updateMasterSummary() {
+        statCount.textContent = stagedInvoices.length;
+        const totalNet = stagedInvoices.reduce((acc, cur) => acc + num(cur.net_amount), 0);
+        const totalGst = stagedInvoices.reduce((acc, cur) => acc + num(cur.total_gst_amount), 0);
+        const totalGrand = stagedInvoices.reduce((acc, cur) => acc + num(cur.grand_total), 0);
+
+        statNet.textContent = '₹ ' + totalNet.toFixed(2);
+        statGst.textContent = '₹ ' + totalGst.toFixed(2);
+        statGrand.textContent = '₹ ' + totalGrand.toFixed(2);
+
+        saveBatchBtn.disabled = stagedInvoices.length === 0;
+    }
+
+    function recalculateRow(idx, changedField, tr) {
+        const item = stagedInvoices[idx];
+        const rate = parseFloat(item.gst_percentage) || 18.0;
+
+        let net = num(item.net_amount);
+        let cgst = num(item.cgst_amount);
+        let sgst = num(item.sgst_amount);
+        let igst = num(item.igst_amount);
+        let totalGst = num(item.total_gst_amount);
+        let grand = num(item.grand_total);
+
+        const isIgst = igst > 0 && cgst === 0 && sgst === 0;
+
+        if (changedField === 'net_amount' || changedField === 'gst_percentage') {
+            totalGst = (net * rate) / 100;
+            if (isIgst) {
+                igst = totalGst; cgst = 0; sgst = 0;
+            } else {
+                cgst = totalGst / 2; sgst = totalGst / 2; igst = 0;
+            }
+            grand = net + totalGst;
+        } else if (changedField === 'grand_total') {
+            if (rate > 0) {
+                net = (grand * 100) / (100 + rate);
+                totalGst = grand - net;
+            } else {
+                net = grand; totalGst = 0;
+            }
+            if (isIgst) {
+                igst = totalGst; cgst = 0; sgst = 0;
+            } else {
+                cgst = totalGst / 2; sgst = totalGst / 2; igst = 0;
+            }
+        } else if (changedField === 'cgst_amount') {
+            sgst = cgst; igst = 0; totalGst = cgst + sgst; grand = net + totalGst;
+        } else if (changedField === 'sgst_amount') {
+            cgst = sgst; igst = 0; totalGst = cgst + sgst; grand = net + totalGst;
+        } else if (changedField === 'igst_amount') {
+            cgst = 0; sgst = 0; totalGst = igst; grand = net + totalGst;
+        } else if (changedField === 'total_gst_amount') {
+            if (isIgst) {
+                igst = totalGst; cgst = 0; sgst = 0;
+            } else {
+                cgst = totalGst / 2; sgst = totalGst / 2; igst = 0;
+            }
+            grand = net + totalGst;
+        }
+
+        item.net_amount = net.toFixed(2);
+        item.cgst_amount = cgst.toFixed(2);
+        item.sgst_amount = sgst.toFixed(2);
+        item.igst_amount = igst.toFixed(2);
+        item.total_gst_amount = totalGst.toFixed(2);
+        item.grand_total = grand.toFixed(2);
+
+        const active = document.activeElement;
+        const updateIfInactive = (field, val) => {
+            const el = tr.querySelector(`[data-field="${field}"]`);
+            if (el && el !== active) el.value = val;
+        };
+
+        updateIfInactive('net_amount', item.net_amount);
+        updateIfInactive('cgst_amount', item.cgst_amount);
+        updateIfInactive('sgst_amount', item.sgst_amount);
+        updateIfInactive('igst_amount', item.igst_amount);
+        updateIfInactive('total_gst_amount', item.total_gst_amount);
+        updateIfInactive('grand_total', item.grand_total);
+
+        updateMasterSummary();
+    }
+
+    invoiceInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        fileChosenText.textContent = `Selected: ${file.name}`;
+        previewWrapper.innerHTML = '';
+
+        if (file.type === 'application/pdf') {
+            const iframe = document.createElement('iframe');
+            iframe.src = URL.createObjectURL(file);
+            previewWrapper.appendChild(iframe);
+        } else if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const img = document.createElement('img');
+                img.src = evt.target.result;
+                previewWrapper.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const file = invoiceInput.files[0];
+        if (!file) return;
+
+        addBtn.disabled = true;
+        btnText.textContent = 'Extracting (AI)...';
+
+        const formData = new FormData();
+        formData.append('invoice', file);
+
+        try {
+            const res = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.success) {
+                emptyRow.style.display = 'none';
+                const invIndex = stagedInvoices.length;
+
+                if (!data.data.type || !["Computer Generated", "Manual"].includes(data.data.type)) {
+                    data.data.type = "Manual";
+                }
+
+                let detectedRate = parseFloat(String(data.data.gst_percentage).replace(/[^0-9.]/g, '')) || 18;
+                if (![0, 5, 12, 18, 28].includes(detectedRate)) {
+                    detectedRate = (detectedRate <= 2.5) ? 0 : (detectedRate <= 8) ? 5 : (detectedRate <= 15) ? 12 : (detectedRate <= 23) ? 18 : 28;
+                }
+                data.data.gst_percentage = detectedRate;
+
+                stagedInvoices.push(data.data);
+
+                const currentType = data.data.type;
+                const selectThemeClass = (currentType === 'Computer Generated') ? 'type-computer' : 'type-manual';
+
+                const tr = document.createElement('tr');
+                tr.className = 'staged-row';
+                tr.innerHTML = `
+                    <td><span class="badge-pending">Queue</span></td>
+                    <td>
+                        <select class="type-select ${selectThemeClass}" data-index="${invIndex}">
+                            <option value="Computer Generated" ${currentType === 'Computer Generated' ? 'selected' : ''}>💻 Computer</option>
+                            <option value="Manual" ${currentType === 'Manual' ? 'selected' : ''}>✍️ Manual</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select class="rate-select" data-index="${invIndex}">
+                            <option value="18" ${detectedRate === 18 ? 'selected' : ''}>18%</option>
+                            <option value="12" ${detectedRate === 12 ? 'selected' : ''}>12%</option>
+                            <option value="5" ${detectedRate === 5 ? 'selected' : ''}>5%</option>
+                            <option value="28" ${detectedRate === 28 ? 'selected' : ''}>28%</option>
+                            <option value="0" ${detectedRate === 0 ? 'selected' : ''}>0%</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="table-input" data-field="company_name" data-index="${invIndex}" value="${data.data.company_name}" style="font-weight: 600; min-width: 140px;"></td>
+                    <td><input type="text" class="table-input" data-field="invoice_no" data-index="${invIndex}" value="${data.data.invoice_no}" style="min-width: 90px;"></td>
+                    <td><input type="text" class="table-input" data-field="date" data-index="${invIndex}" value="${data.data.date}" style="min-width: 85px;"></td>
+                    <td><input type="text" class="table-input" data-field="gst_no" data-index="${invIndex}" value="${data.data.gst_no}" style="min-width: 130px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="net_amount" data-index="${invIndex}" value="${num(data.data.net_amount).toFixed(2)}" style="min-width: 85px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="cgst_amount" data-index="${invIndex}" value="${num(data.data.cgst_amount).toFixed(2)}" style="min-width: 75px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="sgst_amount" data-index="${invIndex}" value="${num(data.data.sgst_amount).toFixed(2)}" style="min-width: 75px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="igst_amount" data-index="${invIndex}" value="${num(data.data.igst_amount).toFixed(2)}" style="min-width: 75px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="total_gst_amount" data-index="${invIndex}" value="${num(data.data.total_gst_amount).toFixed(2)}" style="min-width: 80px; font-weight: 600; color: var(--primary);"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="grand_total" data-index="${invIndex}" value="${num(data.data.grand_total).toFixed(2)}" style="min-width: 90px; font-weight: 700; color: var(--success);"></td>
+                `;
+                detailTableBody.appendChild(tr);
+
+                const typeDropdown = tr.querySelector('.type-select');
+                typeDropdown.addEventListener('change', function() {
+                    const idx = parseInt(this.getAttribute('data-index'));
+                    stagedInvoices[idx].type = this.value;
+                    this.className = (this.value === 'Computer Generated') ? 'type-select type-computer' : 'type-select type-manual';
+                });
+
+                const rateDropdown = tr.querySelector('.rate-select');
+                rateDropdown.addEventListener('change', function() {
+                    const idx = parseInt(this.getAttribute('data-index'));
+                    stagedInvoices[idx].gst_percentage = this.value;
+                    recalculateRow(idx, 'gst_percentage', tr);
+                });
+
+                tr.querySelectorAll('.table-input:not(.amount-field)').forEach(input => {
+                    input.addEventListener('input', function() {
+                        const idx = parseInt(this.getAttribute('data-index'));
+                        stagedInvoices[idx][this.getAttribute('data-field')] = this.value;
+                    });
+                });
+
+                tr.querySelectorAll('.amount-field').forEach(input => {
+                    input.addEventListener('keydown', function(e) {
+                        if ([
+                            'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
+                            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'
+                        ].includes(e.key) || (e.ctrlKey || e.metaKey)) return;
+
+                        if (e.key === '.' && !this.value.includes('.')) return;
+                        if (e.key < '0' || e.key > '9') e.preventDefault();
+                    });
+
+                    input.addEventListener('input', function() {
+                        const idx = parseInt(this.getAttribute('data-index'));
+                        const field = this.getAttribute('data-field');
+                        const cleaned = cleanNumericInput(this.value);
+                        if (this.value !== cleaned) this.value = cleaned;
+                        stagedInvoices[idx][field] = cleaned;
+                        recalculateRow(idx, field, tr);
+                    });
+
+                    input.addEventListener('blur', function() {
+                        this.value = num(this.value).toFixed(2);
+                    });
+                });
+
+                updateMasterSummary();
+                invoiceInput.value = '';
+                fileChosenText.textContent = '';
+            } else {
+                alert('Extraction notice: ' + (data.error || 'Could not parse invoice'));
+            }
+        } catch (err) {
+            alert('Notice: ' + err.message);
+        } finally {
+            addBtn.disabled = false;
+            btnText.textContent = '+ Extract & Append Invoice';
+        }
+    });
+
+    saveBatchBtn.addEventListener('click', async function() {
+        if (stagedInvoices.length === 0) return;
+
+        saveBatchBtn.disabled = true;
+        saveBatchBtn.textContent = 'Saving...';
+
+        try {
+            const res = await fetch('/save-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    invoices: stagedInvoices,
+                    batch_name: batchNameInput.value,
+                    staff_name: staffNameInput.value
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                document.querySelectorAll('.staged-row .badge-pending').forEach(badge => {
+                    badge.className = 'badge-saved';
+                    badge.textContent = `Saved (Batch #${data.batch_id})`;
+                });
+                alert(`Successfully saved batch #${data.batch_id} into MySQL!`);
+                stagedInvoices = [];
+                updateMasterSummary();
+            } else {
+                alert('Database Error: ' + data.error);
+                saveBatchBtn.disabled = false;
+            }
+        } catch (err) {
+            alert('Save failed: ' + err.message);
+            saveBatchBtn.disabled = false;
+        } finally {
+            saveBatchBtn.textContent = '💾 Commit Batch to MySQL';
+        }
+    });
+</script>
+{% endblock %}
