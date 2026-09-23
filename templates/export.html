@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Export Data | Date Filter{% endblock %}
+{% block nav_export %}active{% endblock %}
+{% block page_title %}Export Invoices by Date Range{% endblock %}
+
+{% block head %}
+<style>
+    .filter-bar {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .filter-group label {
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+    }
+    .filter-group input, .filter-group select {
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 0.82rem;
+        outline: none;
+        background: #fff;
+    }
+    .filter-group input:focus, .filter-group select:focus {
+        border-color: var(--primary);
+    }
+    .btn-download {
+        background-color: var(--success);
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .btn-download:hover { background-color: #15803d; }
+
+    .table-wrapper {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow-x: auto;
+        max-height: 540px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.78rem;
+    }
+    thead {
+        background: #f8fafc;
+        position: sticky;
+        top: 0;
+        border-bottom: 1px solid var(--border);
+    }
+    th, td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+    }
+    th { font-weight: 600; color: var(--text-muted); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Start Date</label>
+        <input type="date" id="startDate">
+    </div>
+    <div class="filter-group">
+        <label>End Date</label>
+        <input type="date" id="endDate">
+    </div>
+    <div class="filter-group">
+        <label>Invoice Type</label>
+        <select id="filterType">
+            <option value="all">All Types</option>
+            <option value="Computer Generated">Computer Generated</option>
+            <option value="Manual">Manual</option>
+        </select>
+    </div>
+    <button type="button" class="btn-action" id="filterBtn" style="padding: 8px 16px;">
+        🔍 Filter Preview
+    </button>
+    <button type="button" class="btn-download" id="downloadCsvBtn">
+        📥 Download CSV
+    </button>
+</div>
+
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Batch #</th>
+                <th>Created At</th>
+                <th>Type</th>
+                <th>Company</th>
+                <th>Invoice No</th>
+                <th>Date</th>
+                <th>GST No</th>
+                <th class="num">Net Amt</th>
+                <th class="num">CGST</th>
+                <th class="num">SGST</th>
+                <th class="num">IGST</th>
+                <th class="num">Total GST</th>
+                <th class="num">Grand Total</th>
+            </tr>
+        </thead>
+        <tbody id="exportTableBody">
+            <tr>
+                <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                    Select filters above and click "Filter Preview" to view records.
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const startDate = document.getElementById('startDate');
+    const endDate = document.getElementById('endDate');
+    const filterType = document.getElementById('filterType');
+    const filterBtn = document.getElementById('filterBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const exportTableBody = document.getElementById('exportTableBody');
+
+    // Default to current month
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const today = now.toISOString().split('T')[0];
+    startDate.value = firstDay;
+    endDate.value = today;
+
+    async function fetchFilteredRows() {
+        const params = new URLSearchParams({
+            start_date: startDate.value,
+            end_date: endDate.value,
+            type: filterType.value
+        });
+
+        exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 30px;">Loading...</td></tr>`;
+
+        try {
+            const res = await fetch(`/api/export-preview?${params.toString()}`);
+            const data = await res.json();
+
+            if (!data.success || !data.rows.length) {
+                exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--text-muted); padding: 30px;">No invoices found for selected range.</td></tr>`;
+                return;
+            }
+
+            exportTableBody.innerHTML = data.rows.map(r => `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>#${r.batch_id}</td>
+                    <td>${r.created_at ? r.created_at.substring(0, 10) : '-'}</td>
+                    <td><b>${r.invoice_type}</b></td>
+                    <td style="font-weight: 600;">${r.company_name}</td>
+                    <td>${r.invoice_no}</td>
+                    <td>${r.invoice_date}</td>
+                    <td>${r.gst_no}</td>
+                    <td class="num">₹ ${Number(r.net_amount).toFixed(2)}</td>
+                    <td class="num">₹ ${Number(r.cgst_amount).toFixed(2)}</td>
+                    <td class="num">₹ ${Number(r.sgst_amount).toFixed(2)}</td>
+                    <td class="num">₹ ${Number(r.igst_amount).toFixed(2)}</td>
+                    <td class="num" style="color: var(--primary); font-weight: 600;">₹ ${Number(r.total_gst_amount).toFixed(2)}</td>
+                    <td class="num" style="color: var(--success); font-weight: 700;">₹ ${Number(r.grand_total).toFixed(2)}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--danger); padding: 30px;">Failed to load data.</td></tr>`;
+        }
+    }
+
+    filterBtn.addEventListener('click', fetchFilteredRows);
+
+    downloadCsvBtn.addEventListener('click', function() {
+        const params = new URLSearchParams({
+            start_date: startDate.value,
+            end_date: endDate.value,
+            type: filterType.value
+        });
+        window.location.href = `/export-csv?${params.toString()}`;
+    });
+
+    document.addEventListener('DOMContentLoaded', fetchFilteredRows);
+</script>
+{% endblock %}
