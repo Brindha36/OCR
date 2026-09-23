@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Invoice Management System{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --surface: #ffffff;
+            --background: #f8fafc;
+            --border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --success: #16a34a;
+            --sidebar-width: 240px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--background); color: var(--text-main); min-height: 100vh; display: flex; }
+
+        /* Permanent Left Sidebar */
+        aside.sidebar {
+            width: var(--sidebar-width);
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+        }
+
+        .sidebar-brand {
+            padding: 20px 18px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border);
+            color: var(--primary);
+        }
+
+        .nav-list {
+            list-style: none;
+            padding: 16px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .nav-item a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: all 0.15s ease;
+        }
+
+        .nav-item a:hover {
+            background-color: #f1f5f9;
+            color: var(--text-main);
+        }
+
+        .nav-item.active a {
+            background-color: #eff6ff;
+            color: var(--primary);
+        }
+
+        /* Main Content Container */
+        .content-area {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 100vh;
+        }
+
+        header.top-bar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .main-body {
+            padding: 24px 28px;
+            flex: 1;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <span>📑 TaxInvoice Pro</span>
+        </div>
+        <ul class="nav-list">
+            <li class="nav-item {% block nav_dashboard %}{% endblock %}">
+                <a href="/">📊 Dashboard</a>
+            </li>
+            <li class="nav-item {% block nav_upload %}{% endblock %}">
+                <a href="/upload">📤 Upload Invoice</a>
+            </li>
+            <li class="nav-item {% block nav_export %}{% endblock %}">
+                <a href="/export">📥 Export Invoice</a>
+            </li>
+        </ul>
+    </aside>
+
+    <!-- Content Workspace -->
+    <div class="content-area">
+        <header class="top-bar">
+            <div style="font-weight: 600; font-size: 0.95rem;">{% block page_title %}{% endblock %}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">Database: <b>invoice_db</b></div>
+        </header>
+        <div class="main-body">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
