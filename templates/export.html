@@ -12,31 +12,40 @@
         padding: 16px;
         display: flex;
         align-items: flex-end;
-        gap: 16px;
+        gap: 12px;
         flex-wrap: wrap;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
     }
     .filter-group {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 5px;
+        flex: 1 1 180px;
+        min-width: 140px;
     }
     .filter-group label {
-        font-size: 0.74rem;
-        font-weight: 600;
+        font-size: 0.72rem;
+        font-weight: 700;
         color: var(--text-muted);
         text-transform: uppercase;
     }
     .filter-group input, .filter-group select {
-        padding: 8px 12px;
+        width: 100%;
+        padding: 8px 10px;
         border: 1px solid var(--border);
         border-radius: 6px;
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         outline: none;
         background: #fff;
     }
     .filter-group input:focus, .filter-group select:focus {
         border-color: var(--primary);
+    }
+    .filter-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
     }
     .btn-action {
         background-color: var(--primary);
@@ -44,30 +53,31 @@
         padding: 8px 16px;
         border: none;
         border-radius: 6px;
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         font-weight: 600;
         cursor: pointer;
+        height: 35px;
     }
-    .btn-action:hover { background-color: var(--primary-hover); }
     .btn-download {
         background-color: var(--success);
         color: white;
         padding: 8px 16px;
         border: none;
         border-radius: 6px;
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         font-weight: 600;
         cursor: pointer;
+        height: 35px;
     }
-    .btn-download:hover { background-color: #15803d; }
     .btn-reset {
         background: #f1f5f9;
         color: #475569;
         padding: 8px 14px;
         border: 1px solid var(--border);
         border-radius: 6px;
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         cursor: pointer;
+        height: 35px;
     }
 
     .table-wrapper {
@@ -75,12 +85,15 @@
         border: 1px solid var(--border);
         border-radius: 10px;
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
         max-height: 560px;
+        width: 100%;
     }
     table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.78rem;
+        font-size: 0.76rem;
+        white-space: nowrap;
     }
     thead {
         background: #f8fafc;
@@ -91,7 +104,6 @@
     th, td {
         padding: 10px 12px;
         border-bottom: 1px solid var(--border);
-        white-space: nowrap;
     }
     th { font-weight: 600; color: var(--text-muted); text-align: left; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -116,15 +128,17 @@
             <option value="Manual">Manual</option>
         </select>
     </div>
-    <button type="button" class="btn-action" id="filterBtn">
-        🔍 Filter Database
-    </button>
-    <button type="button" class="btn-reset" id="resetBtn">
-        Clear Filters
-    </button>
-    <button type="button" class="btn-download" id="downloadCsvBtn" style="margin-left: auto;">
-        📥 Download CSV
-    </button>
+    <div class="filter-actions">
+        <button type="button" class="btn-action" id="filterBtn">
+            🔍 Filter Database
+        </button>
+        <button type="button" class="btn-reset" id="resetBtn">
+            Clear Filters
+        </button>
+        <button type="button" class="btn-download" id="downloadCsvBtn">
+            📥 Download CSV
+        </button>
+    </div>
 </div>
 
 <div class="table-wrapper">
