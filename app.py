@@ -14,7 +14,7 @@ from google.genai import types
 
 app = Flask(__name__)
 
-# Serialize Decimal and Date values to JSON safe formats
+# Serialize Decimal and Date values to JSON-safe formats
 def serialize_row(obj):
     if isinstance(obj, (datetime, date)):
         return obj.strftime("%Y-%m-%d")
@@ -32,7 +32,7 @@ INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
 os.makedirs(INVOICE_STORAGE_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = INVOICE_STORAGE_FOLDER
 
-# TiDB Database Connection
+# TiDB Database Connection with Render / Cloudflare SSL fail-safe
 def get_db_connection():
     db_port = os.environ.get("DB_PORT", "4000")
     try:
@@ -194,7 +194,7 @@ Financial Rules:
             "type": "Manual"
         }
 
-# --- PAGE ROUTES ---
+# --- PAGE NAVIGATION ROUTES ---
 
 @app.route("/")
 def dashboard_view():
@@ -208,7 +208,11 @@ def upload_view():
 def export_view():
     return render_template("export.html")
 
-# --- DATA AND ACTION ROUTES ---
+@app.route("/healthz")
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
+# --- API & DATA ROUTES ---
 
 @app.route("/api/dashboard-metrics")
 def get_dashboard_metrics():
@@ -221,7 +225,7 @@ def get_dashboard_metrics():
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # Check if created_at column exists in invoice_items
+            # Check if created_at column exists in invoice_items table
             cursor.execute("""
                 SELECT COUNT(*) as has_col 
                 FROM information_schema.COLUMNS 
@@ -261,7 +265,7 @@ def get_dashboard_metrics():
 
             where_sql = " AND ".join(where_clauses)
 
-            # 1. Total Counts and Sums
+            # 1. Total Metrics & Breakdown
             metric_sql = f"""
                 SELECT 
                     COUNT(*) as total_invoices,
@@ -280,7 +284,7 @@ def get_dashboard_metrics():
             raw_totals = cursor.fetchone() or {}
             totals = clean_row(raw_totals)
 
-            # 2. Type ratio counts
+            # 2. Invoices by Type for Pie Chart
             type_sql = f"""
                 SELECT invoice_type, COUNT(*) as count 
                 FROM invoice_items 
@@ -298,11 +302,11 @@ def get_dashboard_metrics():
                 else:
                     type_counts["Manual"] += cnt
 
-            # 3. Trends
+            # 3. Trends (Using escaped %%Y-%%m-%%d for PyMySQL compatibility)
             if has_created_at:
                 trend_sql = f"""
                     SELECT 
-                        COALESCE(DATE_FORMAT(created_at, '%Y-%m-%d'), 'General') as d_date, 
+                        COALESCE(DATE_FORMAT(created_at, '%%Y-%%m-%%d'), 'General') as d_date, 
                         COALESCE(SUM(grand_total), 0) as day_total
                     FROM invoice_items
                     WHERE {where_sql}
@@ -326,7 +330,7 @@ def get_dashboard_metrics():
             trends = [clean_row(r) for r in raw_trends]
             trends.reverse()
 
-            # 4. Recent rows
+            # 4. Recent Matching Records
             date_col = "created_at" if has_created_at else "invoice_date AS created_at"
             recent_sql = f"""
                 SELECT id, company_name, invoice_no, invoice_date, invoice_type, cgst_amount, sgst_amount, igst_amount, grand_total, {date_col}
@@ -347,7 +351,7 @@ def get_dashboard_metrics():
             "recent": recent_invoices
         })
     except Exception as e:
-        print(f"Metrics Error: {e}")
+        print(f"Metrics Exception: {e}")
         return jsonify({
             "success": False,
             "error": str(e),
