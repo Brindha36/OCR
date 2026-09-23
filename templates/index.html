@@ -26,49 +26,46 @@
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
         
-        /* Prevent page-wide horizontal scroll */
         html, body {
             background-color: var(--background);
             color: var(--text-main);
             min-height: 100vh;
-            overflow-x: hidden;
             width: 100%;
         }
 
         header {
             background-color: var(--surface);
             border-bottom: 1px solid var(--border);
-            padding: 16px 32px;
+            padding: 14px 28px;
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
-        .brand { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .brand { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
         .workspace {
             width: 100%;
-            max-width: 100%;
-            margin: 20px auto;
-            padding: 0 20px;
+            margin: 16px auto;
+            padding: 0 18px;
             display: grid;
-            grid-template-columns: 320px minmax(0, 1fr);
-            gap: 20px;
+            grid-template-columns: 290px minmax(0, 1fr);
+            gap: 16px;
         }
 
         .panel {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 18px;
+            border-radius: 10px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 12px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-            min-width: 0; /* Prevents CSS grid blowout */
+            min-width: 0;
         }
 
         .panel-title {
-            font-size: 0.95rem;
+            font-size: 0.92rem;
             font-weight: 600;
             display: flex;
             align-items: center;
@@ -77,8 +74,8 @@
 
         .dropzone {
             border: 2px dashed #cbd5e1;
-            border-radius: 10px;
-            padding: 20px;
+            border-radius: 8px;
+            padding: 16px;
             text-align: center;
             background: #f8fafc;
             cursor: pointer;
@@ -97,11 +94,11 @@
         .btn-action {
             background-color: var(--primary);
             color: #fff;
-            padding: 10px 16px;
-            border-radius: 8px;
+            padding: 9px 14px;
+            border-radius: 7px;
             border: none;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -113,7 +110,7 @@
         .btn-success:hover { background-color: #15803d; }
 
         .preview-container {
-            height: 280px;
+            height: 260px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #f8fafc;
@@ -128,34 +125,34 @@
         .summary-cards {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
+            gap: 10px;
         }
         .card-stat {
             background: #f8fafc;
             border: 1px solid var(--border);
-            padding: 12px;
+            padding: 10px 14px;
             border-radius: 8px;
         }
-        .card-stat-label { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
-        .card-stat-val { font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-top: 4px; }
+        .card-stat-label { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+        .card-stat-val { font-size: 1.05rem; font-weight: 700; color: var(--text-main); margin-top: 3px; font-variant-numeric: tabular-nums; }
         .card-stat-val.highlight { color: var(--success); }
 
-        /* Strict vertical-only scroll container */
+        /* Vertical-only scroll container */
         .table-wrapper {
-            overflow-x: hidden;
             overflow-y: auto;
+            overflow-x: auto;
             border: 1px solid var(--border);
             border-radius: 8px;
             max-height: 520px;
             width: 100%;
         }
 
-        /* Fixed table layout prevents pushing horizontally */
+        /* Enforce strictly single line across all cells */
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.75rem;
-            table-layout: fixed;
+            font-size: 0.74rem;
+            font-variant-numeric: tabular-nums;
         }
 
         thead {
@@ -167,34 +164,31 @@
         }
 
         th, td {
-            padding: 8px 6px;
+            padding: 8px 7px;
             border-bottom: 1px solid var(--border);
             text-align: left;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            white-space: normal; /* Permits wrapping into multi-line cells */
+            white-space: nowrap !important; /* Strictly prevents two lines */
             vertical-align: middle;
         }
 
         th {
             font-weight: 600;
             color: var(--text-muted);
-            font-size: 0.72rem;
-            line-height: 1.2;
+            font-size: 0.71rem;
+            letter-spacing: 0.01em;
         }
 
-        /* Right-align numbers for neat accounting layouts */
         .num-cell {
             text-align: right;
         }
 
         .editable-cell {
-            padding: 4px 4px;
+            padding: 3px 5px;
             border-radius: 4px;
             outline: none;
             border: 1px dashed transparent;
-            display: block;
-            min-height: 18px;
+            display: inline-block;
+            white-space: nowrap !important; /* Strictly prevents two lines */
         }
         .editable-cell:hover {
             border-color: #94a3b8;
@@ -206,16 +200,16 @@
             box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
         }
 
-        /* Compact type selector */
+        /* Compact, single-line Type selector */
         .type-select {
-            width: 100%;
-            padding: 4px 2px;
+            padding: 3px 6px;
             border-radius: 5px;
             font-size: 0.7rem;
             font-weight: 600;
             border: 1px solid var(--border);
             outline: none;
             cursor: pointer;
+            white-space: nowrap;
         }
         .type-select.type-computer {
             background-color: #eff6ff;
@@ -228,15 +222,15 @@
             border-color: #fde68a;
         }
 
-        .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 3px 5px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; display: inline-block; }
-        .badge-saved { background: #ecfdf5; color: #047857; padding: 3px 5px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; display: inline-block; }
+        .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
+        .badge-saved { background: #ecfdf5; color: #047857; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
     </style>
 </head>
 <body>
 
 <header>
     <div class="brand">📑 Multi-Invoice Batch Processing (Master-Detail Architecture)</div>
-    <div style="font-size: 0.85rem; color: var(--text-muted);">Database: <b>invoice_db</b></div>
+    <div style="font-size: 0.82rem; color: var(--text-muted);">Database: <b>invoice_db</b></div>
 </header>
 
 <main class="workspace">
@@ -244,34 +238,34 @@
     <section class="panel">
         <div class="panel-title">Upload Invoices</div>
 
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);">Batch Description</label>
-            <input type="text" id="batchNameInput" value="September 2026 Invoices" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.82rem;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted);">Batch Description</label>
+            <input type="text" id="batchNameInput" value="September 2026 Invoices" style="padding: 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.78rem;">
             
-            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); margin-top: 2px;">Staff Name</label>
-            <input type="text" id="staffNameInput" value="Accounts Team" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.82rem;">
+            <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted); margin-top: 2px;">Staff Name</label>
+            <input type="text" id="staffNameInput" value="Accounts Team" style="padding: 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.78rem;">
         </div>
 
-        <form id="uploadForm" style="margin-top: 4px;">
+        <form id="uploadForm" style="margin-top: 2px;">
             <div class="dropzone">
                 <input type="file" id="invoiceInput" accept=".pdf,image/*" required>
-                <div style="font-size: 0.78rem; color: var(--text-muted);">Click or drag invoice (PDF / Image)</div>
-                <div id="fileChosenText" style="font-size: 0.72rem; color: var(--primary); font-weight: 600; margin-top: 4px;"></div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Click or drag invoice (PDF / Image)</div>
+                <div id="fileChosenText" style="font-size: 0.7rem; color: var(--primary); font-weight: 600; margin-top: 4px;"></div>
             </div>
-            <button type="submit" id="addBtn" class="btn-action" style="width: 100%; margin-top: 10px; justify-content: center;">
+            <button type="submit" id="addBtn" class="btn-action" style="width: 100%; margin-top: 8px; justify-content: center;">
                 <span id="btnText">+ Extract & Append Invoice</span>
             </button>
         </form>
 
         <div class="preview-container" id="previewWrapper">
-            <div style="color: var(--text-muted); font-size: 0.78rem;">Invoice preview</div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Invoice preview</div>
         </div>
     </section>
 
     <!-- Right: Master Summary & Detail Table -->
     <section class="panel">
         <div class="panel-title">
-            <span>Master Batch Summary (Live)</span>
+            <span>Master Batch Summary (Calculated Live)</span>
             <button class="btn-action btn-success" id="saveBatchBtn" disabled>
                 💾 Commit Batch to MySQL (2 Tables)
             </button>
@@ -288,7 +282,7 @@
                 <div class="card-stat-val" id="statNet">₹ 0.00</div>
             </div>
             <div class="card-stat">
-                <div class="card-stat-label">Total GST (All Taxes)</div>
+                <div class="card-stat-label">Total GST</div>
                 <div class="card-stat-val" id="statGst">₹ 0.00</div>
             </div>
             <div class="card-stat">
@@ -299,25 +293,25 @@
 
         <!-- Detail Table -->
         <div class="panel-title" style="margin-top: 4px;">
-            <span style="font-size: 0.82rem; color: var(--text-muted);">Detail Items Table (Tip: Click values to edit, change type via dropdown)</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Detail Items Table (Tip: Click values to edit inline)</span>
         </div>
 
         <div class="table-wrapper">
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 6%;">Status</th>
-                        <th style="width: 12%;">Type</th>
-                        <th style="width: 14%;">Company</th>
-                        <th style="width: 9%;">Inv No</th>
-                        <th style="width: 8%;">Date</th>
-                        <th style="width: 12%;">GST No</th>
-                        <th style="width: 9%;" class="num-cell">Net Amt</th>
-                        <th style="width: 7%;" class="num-cell">CGST</th>
-                        <th style="width: 7%;" class="num-cell">SGST</th>
-                        <th style="width: 7%;" class="num-cell">IGST</th>
-                        <th style="width: 9%;" class="num-cell">Total GST</th>
-                        <th style="width: 10%;" class="num-cell">Grand Total</th>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Company</th>
+                        <th>Invoice No</th>
+                        <th>Date</th>
+                        <th>GST No</th>
+                        <th class="num-cell">Net Amt</th>
+                        <th class="num-cell">CGST</th>
+                        <th class="num-cell">SGST</th>
+                        <th class="num-cell">IGST</th>
+                        <th class="num-cell">Total GST</th>
+                        <th class="num-cell">Grand Total</th>
                     </tr>
                 </thead>
                 <tbody id="detailTableBody">
@@ -451,7 +445,7 @@
                 `;
                 detailTableBody.appendChild(tr);
 
-                // Handle Invoice Type change
+                // Handle Invoice Type toggle
                 const typeDropdown = tr.querySelector('.type-select');
                 typeDropdown.addEventListener('change', function() {
                     const idx = parseInt(this.getAttribute('data-index'));
@@ -463,7 +457,7 @@
                     }
                 });
 
-                // Handle manual inline corrections
+                // Inline edits listener
                 tr.querySelectorAll('.editable-cell').forEach(cell => {
                     cell.addEventListener('blur', function() {
                         const idx = parseInt(this.getAttribute('data-index'));
