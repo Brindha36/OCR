@@ -137,7 +137,6 @@
         .card-stat-val { font-size: 1.05rem; font-weight: 700; color: var(--text-main); margin-top: 3px; font-variant-numeric: tabular-nums; }
         .card-stat-val.highlight { color: var(--success); }
 
-        /* Vertical-only scroll container */
         .table-wrapper {
             overflow-y: auto;
             overflow-x: auto;
@@ -147,7 +146,6 @@
             width: 100%;
         }
 
-        /* Enforce strictly single line across all cells */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -167,7 +165,7 @@
             padding: 8px 7px;
             border-bottom: 1px solid var(--border);
             text-align: left;
-            white-space: nowrap !important; /* Strictly prevents two lines */
+            white-space: nowrap !important;
             vertical-align: middle;
         }
 
@@ -188,7 +186,8 @@
             outline: none;
             border: 1px dashed transparent;
             display: inline-block;
-            white-space: nowrap !important; /* Strictly prevents two lines */
+            white-space: nowrap !important;
+            cursor: text;
         }
         .editable-cell:hover {
             border-color: #94a3b8;
@@ -200,8 +199,7 @@
             box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
         }
 
-        /* Compact, single-line Type selector */
-        .type-select {
+        .type-select, .rate-select {
             padding: 3px 6px;
             border-radius: 5px;
             font-size: 0.7rem;
@@ -220,6 +218,10 @@
             background-color: #fffbeb;
             color: #b45309;
             border-color: #fde68a;
+        }
+        .rate-select {
+            background-color: #f1f5f9;
+            color: #334155;
         }
 
         .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
@@ -265,7 +267,7 @@
     <!-- Right: Master Summary & Detail Table -->
     <section class="panel">
         <div class="panel-title">
-            <span>Master Batch Summary (Calculated Live)</span>
+            <span>Master Batch Summary (Live)</span>
             <button class="btn-action btn-success" id="saveBatchBtn" disabled>
                 💾 Commit Batch to MySQL (2 Tables)
             </button>
@@ -293,7 +295,7 @@
 
         <!-- Detail Table -->
         <div class="panel-title" style="margin-top: 4px;">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Detail Items Table (Tip: Click values to edit inline)</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Detail Items Table (Tip: Editing any amount recalculates the entire row and totals automatically)</span>
         </div>
 
         <div class="table-wrapper">
@@ -302,6 +304,7 @@
                     <tr>
                         <th>Status</th>
                         <th>Type</th>
+                        <th>Rate</th>
                         <th>Company</th>
                         <th>Invoice No</th>
                         <th>Date</th>
@@ -316,7 +319,7 @@
                 </thead>
                 <tbody id="detailTableBody">
                     <tr id="emptyRow">
-                        <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
                             No invoices queued yet. Upload files one by one to see details here.
                         </td>
                     </tr>
@@ -363,6 +366,96 @@
         statGrand.textContent = '₹ ' + totalGrand.toFixed(2);
 
         saveBatchBtn.disabled = stagedInvoices.length === 0;
+    }
+
+    // Dynamic row-level recalculation
+    function recalculateRow(idx, changedField, tr) {
+        const item = stagedInvoices[idx];
+        const rate = parseFloat(item.gst_percentage) || 18.0;
+
+        let net = num(item.net_amount);
+        let cgst = num(item.cgst_amount);
+        let sgst = num(item.sgst_amount);
+        let igst = num(item.igst_amount);
+        let totalGst = num(item.total_gst_amount);
+        let grand = num(item.grand_total);
+
+        const isIgst = igst > 0 && cgst === 0 && sgst === 0;
+
+        if (changedField === 'net_amount' || changedField === 'gst_percentage') {
+            totalGst = (net * rate) / 100;
+            if (isIgst) {
+                igst = totalGst;
+                cgst = 0;
+                sgst = 0;
+            } else {
+                cgst = totalGst / 2;
+                sgst = totalGst / 2;
+                igst = 0;
+            }
+            grand = net + totalGst;
+        } else if (changedField === 'grand_total') {
+            if (rate > 0) {
+                net = (grand * 100) / (100 + rate);
+                totalGst = grand - net;
+            } else {
+                net = grand;
+                totalGst = 0;
+            }
+            if (isIgst) {
+                igst = totalGst;
+                cgst = 0;
+                sgst = 0;
+            } else {
+                cgst = totalGst / 2;
+                sgst = totalGst / 2;
+                igst = 0;
+            }
+        } else if (changedField === 'cgst_amount') {
+            sgst = cgst; // CGST and SGST must match in GST rules
+            igst = 0;
+            totalGst = cgst + sgst;
+            grand = net + totalGst;
+        } else if (changedField === 'sgst_amount') {
+            cgst = sgst; // CGST and SGST must match in GST rules
+            igst = 0;
+            totalGst = cgst + sgst;
+            grand = net + totalGst;
+        } else if (changedField === 'igst_amount') {
+            cgst = 0;
+            sgst = 0;
+            totalGst = igst;
+            grand = net + totalGst;
+        } else if (changedField === 'total_gst_amount') {
+            if (isIgst) {
+                igst = totalGst;
+                cgst = 0;
+                sgst = 0;
+            } else {
+                cgst = totalGst / 2;
+                sgst = totalGst / 2;
+                igst = 0;
+            }
+            grand = net + totalGst;
+        }
+
+        // Save back into staged data
+        item.net_amount = net.toFixed(2);
+        item.cgst_amount = cgst.toFixed(2);
+        item.sgst_amount = sgst.toFixed(2);
+        item.igst_amount = igst.toFixed(2);
+        item.total_gst_amount = totalGst.toFixed(2);
+        item.grand_total = grand.toFixed(2);
+
+        // Update DOM elements in row
+        tr.querySelector('[data-field="net_amount"]').innerText = item.net_amount;
+        tr.querySelector('[data-field="cgst_amount"]').innerText = item.cgst_amount;
+        tr.querySelector('[data-field="sgst_amount"]').innerText = item.sgst_amount;
+        tr.querySelector('[data-field="igst_amount"]').innerText = item.igst_amount;
+        tr.querySelector('[data-field="total_gst_amount"]').innerText = item.total_gst_amount;
+        tr.querySelector('[data-field="grand_total"]').innerText = item.grand_total;
+
+        updateMasterSummary();
     }
 
     invoiceInput.addEventListener('change', function(e) {
@@ -416,7 +509,15 @@
                 if (!data.data.type || !["Computer Generated", "Manual"].includes(data.data.type)) {
                     data.data.type = "Manual";
                 }
-                
+
+                // Detect or normalize GST rate
+                let detectedRate = parseFloat(String(data.data.gst_percentage).replace(/[^0-9.]/g, '')) || 18;
+                if (![0, 5, 12, 18, 28].includes(detectedRate)) {
+                    // Nearest standard GST tier if detected oddly
+                    detectedRate = (detectedRate <= 2.5) ? 0 : (detectedRate <= 8) ? 5 : (detectedRate <= 15) ? 12 : (detectedRate <= 23) ? 18 : 28;
+                }
+                data.data.gst_percentage = detectedRate;
+
                 stagedInvoices.push(data.data);
 
                 const currentType = data.data.type;
@@ -432,6 +533,15 @@
                             <option value="Manual" ${currentType === 'Manual' ? 'selected' : ''}>✍️ Manual</option>
                         </select>
                     </td>
+                    <td>
+                        <select class="rate-select" data-index="${invIndex}">
+                            <option value="18" ${detectedRate === 18 ? 'selected' : ''}>18%</option>
+                            <option value="12" ${detectedRate === 12 ? 'selected' : ''}>12%</option>
+                            <option value="5" ${detectedRate === 5 ? 'selected' : ''}>5%</option>
+                            <option value="28" ${detectedRate === 28 ? 'selected' : ''}>28%</option>
+                            <option value="0" ${detectedRate === 0 ? 'selected' : ''}>0%</option>
+                        </select>
+                    </td>
                     <td><span class="editable-cell" contenteditable="true" data-field="company_name" data-index="${invIndex}" style="font-weight: 600;">${data.data.company_name}</span></td>
                     <td><span class="editable-cell" contenteditable="true" data-field="invoice_no" data-index="${invIndex}">${data.data.invoice_no}</span></td>
                     <td><span class="editable-cell" contenteditable="true" data-field="date" data-index="${invIndex}">${data.data.date}</span></td>
@@ -445,7 +555,7 @@
                 `;
                 detailTableBody.appendChild(tr);
 
-                // Handle Invoice Type toggle
+                // Invoice Type change handler
                 const typeDropdown = tr.querySelector('.type-select');
                 typeDropdown.addEventListener('change', function() {
                     const idx = parseInt(this.getAttribute('data-index'));
@@ -457,13 +567,28 @@
                     }
                 });
 
-                // Inline edits listener
+                // GST Rate change handler
+                const rateDropdown = tr.querySelector('.rate-select');
+                rateDropdown.addEventListener('change', function() {
+                    const idx = parseInt(this.getAttribute('data-index'));
+                    stagedInvoices[idx].gst_percentage = this.value;
+                    recalculateRow(idx, 'gst_percentage', tr);
+                });
+
+                // Inline edits listener with instant recalculation
                 tr.querySelectorAll('.editable-cell').forEach(cell => {
                     cell.addEventListener('blur', function() {
                         const idx = parseInt(this.getAttribute('data-index'));
                         const field = this.getAttribute('data-field');
-                        stagedInvoices[idx][field] = this.innerText.trim();
-                        updateMasterSummary();
+                        const val = this.innerText.trim();
+
+                        if (['net_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'total_gst_amount', 'grand_total'].includes(field)) {
+                            stagedInvoices[idx][field] = num(val).toFixed(2);
+                            recalculateRow(idx, field, tr);
+                        } else {
+                            stagedInvoices[idx][field] = val;
+                            updateMasterSummary();
+                        }
                     });
                 });
 
