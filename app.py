@@ -71,14 +71,14 @@ def analyze_invoice(file_path):
 
     prompt = """
 Analyze the uploaded Indian GST tax invoice document.
-Extract the fields according to the schema provided.
+Extract all requested fields according to the schema provided.
 
 Classification Instructions for 'type':
 - 'Manual': The invoice entries are handwritten (pen, pencil), on a printed bill-book with physical handwritten items/rates, or carbon-copy slips.
 - 'Computer Generated': The invoice is generated and printed via software, POS billing printer, ERP, Tally, Zoho, Excel, or digital PDF layout.
 
 Financial Rules:
-- 'net_amount' is the taxable value before GST.
+- 'net_amount' is the taxable subtotal before GST.
 - 'grand_total' is the final payable total.
 - Convert all numbers to standard decimal format (e.g., 1250.00).
 """
