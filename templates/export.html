@@ -133,11 +133,10 @@
             <tr>
                 <th>ID</th>
                 <th>Batch #</th>
-                <th>Created At</th>
+                <th>Date</th>
                 <th>Type</th>
                 <th>Company</th>
                 <th>Invoice No</th>
-                <th>Date</th>
                 <th>GST No</th>
                 <th class="num">Net Amt</th>
                 <th class="num">CGST</th>
@@ -149,7 +148,7 @@
         </thead>
         <tbody id="exportTableBody">
             <tr>
-                <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 30px;">
                     Connecting to database...
                 </td>
             </tr>
@@ -174,19 +173,19 @@
         if (endDate.value) params.append('end_date', endDate.value);
         if (filterType.value && filterType.value !== 'all') params.append('type', filterType.value);
 
-        exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 30px;">Loading database records...</td></tr>`;
+        exportTableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 30px;">Loading database records...</td></tr>`;
 
         try {
             const res = await fetch(`/api/export-preview?${params.toString()}`);
             const data = await res.json();
 
             if (!data.success) {
-                exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--danger); padding: 30px;">Database Error: ${data.error}</td></tr>`;
+                exportTableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; color: red; padding: 30px;">Error: ${data.error}</td></tr>`;
                 return;
             }
 
             if (!data.rows || !data.rows.length) {
-                exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--text-muted); padding: 30px;">No invoices found in database for this selection.</td></tr>`;
+                exportTableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; color: var(--text-muted); padding: 30px;">No invoices found for this selection.</td></tr>`;
                 return;
             }
 
@@ -194,11 +193,10 @@
                 <tr>
                     <td>#${r.id}</td>
                     <td>#${r.batch_id}</td>
-                    <td>${r.created_at ? r.created_at.substring(0, 10) : '-'}</td>
+                    <td>${r.created_at || r.invoice_date || '-'}</td>
                     <td><b>${r.invoice_type || 'Manual'}</b></td>
                     <td style="font-weight: 600;">${r.company_name || 'N/A'}</td>
                     <td>${r.invoice_no || '-'}</td>
-                    <td>${r.invoice_date || '-'}</td>
                     <td>${r.gst_no || '-'}</td>
                     <td class="num">₹ ${Number(r.net_amount || 0).toFixed(2)}</td>
                     <td class="num">₹ ${Number(r.cgst_amount || 0).toFixed(2)}</td>
@@ -209,7 +207,7 @@
                 </tr>
             `).join('');
         } catch (e) {
-            exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: red; padding: 30px;">Failed to connect to backend: ${e.message}</td></tr>`;
+            exportTableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; color: red; padding: 30px;">Connection failed: ${e.message}</td></tr>`;
         }
     }
 
@@ -231,7 +229,6 @@
         window.location.href = `/export-csv?${params.toString()}`;
     });
 
-    // Auto-fetch all invoices immediately on load
     document.addEventListener('DOMContentLoaded', fetchFilteredRows);
 </script>
 {% endblock %}
