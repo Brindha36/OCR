@@ -42,15 +42,13 @@ def get_available_flash_models(client):
     try:
         for m in client.models.list():
             name = m.name.replace("models/", "")
-            # Filter for active Flash models capable of vision/document parsing
             if "flash" in name.lower():
                 valid_models.append(name)
     except Exception as e:
         print(f"Model listing fallback: {e}")
     
-    # Fallback to standard 2.x flash endpoints if listing is restricted
     if not valid_models:
-        valid_models = ["gemini-2.0-flash", "gemini-2.5-flash"]
+        valid_models = ["gemini-2.5-flash", "gemini-2.0-flash"]
     return valid_models
 
 def clean_float(val):
@@ -72,28 +70,45 @@ def analyze_invoice(file_path):
     uploaded_ref = client.files.upload(file=file_path)
 
     prompt = """
-Extract Indian GST tax invoice data into pure JSON format:
-{
-  "company_name": "Supplier or Vendor Name",
-  "invoice_no": "Invoice Number",
-  "date": "Date of invoice",
-  "gst_no": "15-digit GSTIN",
-  "gst_percentage": "GST rate(s) applied",
-  "net_amount": "0.00",
-  "cgst_amount": "0.00",
-  "sgst_amount": "0.00",
-  "igst_amount": "0.00",
-  "gst_5_amount": "0.00",
-  "gst_12_amount": "0.00",
-  "total_gst_amount": "0.00",
-  "grand_total": "0.00",
-  "type": "Manual or Computer Generated"
-}
-Rules:
-- "net_amount" is the taxable value before GST.
-- "grand_total" is the final payable total.
-- Output pure JSON only without markdown formatting.
+Analyze the uploaded Indian GST tax invoice document.
+Extract the fields according to the schema provided.
+
+Classification Instructions for 'type':
+- 'Manual': The invoice entries are handwritten (pen, pencil), on a printed bill-book with physical handwritten items/rates, or carbon-copy slips.
+- 'Computer Generated': The invoice is generated and printed via software, POS billing printer, ERP, Tally, Zoho, Excel, or digital PDF layout.
+
+Financial Rules:
+- 'net_amount' is the taxable value before GST.
+- 'grand_total' is the final payable total.
+- Convert all numbers to standard decimal format (e.g., 1250.00).
 """
+
+    invoice_schema = {
+        "type": "OBJECT",
+        "properties": {
+            "company_name": {"type": "STRING"},
+            "invoice_no": {"type": "STRING"},
+            "date": {"type": "STRING"},
+            "gst_no": {"type": "STRING"},
+            "gst_percentage": {"type": "STRING"},
+            "net_amount": {"type": "STRING"},
+            "cgst_amount": {"type": "STRING"},
+            "sgst_amount": {"type": "STRING"},
+            "igst_amount": {"type": "STRING"},
+            "gst_5_amount": {"type": "STRING"},
+            "gst_12_amount": {"type": "STRING"},
+            "total_gst_amount": {"type": "STRING"},
+            "grand_total": {"type": "STRING"},
+            "type": {
+                "type": "STRING",
+                "enum": ["Computer Generated", "Manual"]
+            }
+        },
+        "required": [
+            "company_name", "invoice_no", "date", "gst_no", "net_amount",
+            "total_gst_amount", "grand_total", "type"
+        ]
+    }
 
     models_to_try = get_available_flash_models(client)
     response = None
@@ -107,7 +122,8 @@ Rules:
                     contents=[uploaded_ref, prompt],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        temperature=0.1
+                        response_schema=invoice_schema,
+                        temperature=0.0
                     )
                 )
                 if response and response.text:
@@ -115,17 +131,15 @@ Rules:
             except Exception as err:
                 last_error = err
                 err_str = str(err)
-                # Retry on transient server busy (503) or rate limits (429)
                 if any(code in err_str for code in ["503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED"]):
                     time.sleep(2 * (attempt + 1))
                     continue
                 else:
-                    # Non-retriable error for this specific model, proceed to next candidate
                     break
         if response and response.text:
             break
 
-    # Clean up uploaded cloud file reference to maintain storage quotas
+    # Clean up uploaded cloud file reference
     try:
         client.files.delete(name=uploaded_ref.name)
     except Exception:
@@ -134,17 +148,15 @@ Rules:
     if not response or not response.text:
         raise Exception(f"AI service temporarily unavailable: {last_error}")
 
-    raw_text = response.text.strip()
-    if raw_text.startswith("```"):
-        raw_text = raw_text.strip("`")
-        if raw_text.startswith("json"):
-            raw_text = raw_text[4:].strip()
-
     try:
-        data = json.loads(raw_text)
+        data = json.loads(response.text.strip())
         for key in ["net_amount", "cgst_amount", "sgst_amount", "igst_amount",
                     "gst_5_amount", "gst_12_amount", "total_gst_amount", "grand_total"]:
             data[key] = f"{clean_float(data.get(key, 0.0)):.2f}"
+
+        if data.get("type") not in ["Computer Generated", "Manual"]:
+            data["type"] = "Manual"
+
         return data
     except Exception as e:
         print(f"JSON Parse Exception: {e}")
@@ -162,7 +174,7 @@ Rules:
             "gst_12_amount": "0.00",
             "total_gst_amount": "0.00",
             "grand_total": "0.00",
-            "type": "Not found"
+            "type": "Manual"
         }
 
 @app.route("/invoices/<filename>")
@@ -266,7 +278,7 @@ def save_batch():
                     clean_float(r.get("gst_12_amount")),
                     clean_float(r.get("total_gst_amount")),
                     clean_float(r.get("grand_total")),
-                    r.get("type", "Not found")
+                    r.get("type", "Manual")
                 )
                 for r in records
             ]
