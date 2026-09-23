@@ -33,7 +33,7 @@ def get_db_connection():
 def get_client():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise Exception("GOOGLE_API_KEY is not set in Render Environment variables")
+        raise Exception("GOOGLE_API_KEY is not set in environment variables")
     return genai.Client(api_key=api_key)
 
 def get_available_flash_models(client):
