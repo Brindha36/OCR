@@ -38,7 +38,7 @@
         .brand { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
         .workspace {
-            max-width: 1800px;
+            max-width: 1850px;
             margin: 24px auto;
             padding: 0 24px;
             display: grid;
@@ -162,23 +162,23 @@
             box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
         }
 
-        /* Type Dropdown Styles */
+        /* Invoice Type selector dropdown styles */
         .type-select {
-            padding: 4px 8px;
+            padding: 5px 8px;
             border-radius: 6px;
             font-size: 0.75rem;
             font-weight: 600;
             border: 1px solid var(--border);
             outline: none;
             cursor: pointer;
-            background-color: #ffffff;
+            transition: all 0.15s ease;
         }
-        .type-computer {
+        .type-select.type-computer {
             background-color: #eff6ff;
             color: #1d4ed8;
             border-color: #bfdbfe;
         }
-        .type-manual {
+        .type-select.type-manual {
             background-color: #fffbeb;
             color: #b45309;
             border-color: #fde68a;
@@ -196,7 +196,7 @@
 </header>
 
 <main class="workspace">
-    <!-- Left: Upload Step -->
+    <!-- Left: Upload Section -->
     <section class="panel">
         <div class="panel-title">Upload Invoices</div>
 
@@ -233,7 +233,7 @@
             </button>
         </div>
 
-        <!-- Master Table Stat Cards -->
+        <!-- Master Stat Cards -->
         <div class="summary-cards">
             <div class="card-stat">
                 <div class="card-stat-label">Invoices Count</div>
@@ -253,9 +253,9 @@
             </div>
         </div>
 
-        <!-- Detailed Invoice Table -->
+        <!-- Detail Table -->
         <div class="panel-title" style="margin-top: 10px;">
-            <span style="font-size: 0.85rem; color: var(--text-muted);">Detail Items Table (Tip: Click values to edit if OCR misreads)</span>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Detail Items Table (Tip: Click values to edit, change type via dropdown)</span>
         </div>
 
         <div class="table-wrapper">
@@ -370,14 +370,14 @@
             try {
                 data = JSON.parse(resText);
             } catch (err) {
-                throw new Error("Server error or timeout. Please check your Render service logs.");
+                throw new Error("Server error or timeout. Please check your Render logs.");
             }
 
             if (data.success) {
                 emptyRow.style.display = 'none';
                 const invIndex = stagedInvoices.length;
                 
-                // Fallback guarantee for invoice type
+                // Ensure valid invoice type fallback
                 if (!data.data.type || !["Computer Generated", "Manual"].includes(data.data.type)) {
                     data.data.type = "Manual";
                 }
@@ -385,14 +385,14 @@
                 stagedInvoices.push(data.data);
 
                 const currentType = data.data.type;
-                const selectClass = currentType === 'Computer Generated' ? 'type-computer' : 'type-manual';
+                const selectThemeClass = (currentType === 'Computer Generated') ? 'type-computer' : 'type-manual';
 
                 const tr = document.createElement('tr');
                 tr.className = 'staged-row';
                 tr.innerHTML = `
                     <td><span class="badge-pending">Queue</span></td>
                     <td>
-                        <select class="type-select ${selectClass}" data-index="${invIndex}">
+                        <select class="type-select ${selectThemeClass}" data-index="${invIndex}">
                             <option value="Computer Generated" ${currentType === 'Computer Generated' ? 'selected' : ''}>💻 Computer Generated</option>
                             <option value="Manual" ${currentType === 'Manual' ? 'selected' : ''}>✍️ Manual</option>
                         </select>
@@ -412,7 +412,7 @@
                 `;
                 detailTableBody.appendChild(tr);
 
-                // Handle interactive Invoice Type dropdown changes
+                // Live event listener for Invoice Type change
                 const typeDropdown = tr.querySelector('.type-select');
                 typeDropdown.addEventListener('change', function() {
                     const idx = parseInt(this.getAttribute('data-index'));
@@ -424,7 +424,7 @@
                     }
                 });
 
-                // Handle manual inline corrections
+                // Live event listener for inline manual corrections
                 tr.querySelectorAll('.editable-cell').forEach(cell => {
                     cell.addEventListener('blur', function() {
                         const idx = parseInt(this.getAttribute('data-index'));
@@ -470,7 +470,7 @@
             try {
                 data = JSON.parse(resText);
             } catch(e) {
-                throw new Error("Server returned non-JSON. Verify TiDB/MySQL database status in Render.");
+                throw new Error("Server returned non-JSON. Verify MySQL connection.");
             }
 
             if (data.success) {
@@ -478,7 +478,7 @@
                     badge.className = 'badge-saved';
                     badge.textContent = `Saved (Batch #${data.batch_id})`;
                 });
-                alert(`Successfully saved batch #${data.batch_id} with ${data.count} detail invoices into MySQL!`);
+                alert(`Successfully saved batch #${data.batch_id} with ${data.count} invoices into MySQL!`);
                 stagedInvoices = [];
                 updateMasterSummary();
             } else {
