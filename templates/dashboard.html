@@ -27,6 +27,7 @@
         font-weight: 700;
         color: var(--text-muted);
         text-transform: uppercase;
+        letter-spacing: 0.02em;
     }
     .filter-item input, .filter-item select {
         padding: 8px 12px;
@@ -37,26 +38,14 @@
         background: #f8fafc;
         color: #1e293b;
         font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
     }
     .filter-item input:focus, .filter-item select:focus {
         border-color: var(--primary);
         background: #ffffff;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
     }
-    .btn-filter-action {
-        background-color: var(--primary);
-        color: #ffffff;
-        padding: 8px 16px;
-        border: none;
-        border-radius: 7px;
-        font-size: 0.82rem;
-        font-weight: 600;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 35px;
-    }
-    .btn-filter-action:hover { background-color: var(--primary-hover); }
     .btn-filter-reset {
         background: #f1f5f9;
         color: #475569;
@@ -67,6 +56,14 @@
         cursor: pointer;
         font-weight: 600;
         height: 35px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s ease;
+    }
+    .btn-filter-reset:hover {
+        background: #e2e8f0;
+        color: #0f172a;
     }
 
     .section-title {
@@ -185,7 +182,7 @@
         font-weight: 700;
         color: #1e293b;
         display: flex;
-        align-items: gap;
+        align-items: center;
         gap: 8px;
     }
 
@@ -229,6 +226,7 @@
 {% endblock %}
 
 {% block content %}
+<!-- Live Instant Filter Toolbar -->
 <div class="dashboard-filter-bar">
     <div class="filter-item">
         <label>Start Date</label>
@@ -254,14 +252,12 @@
             <option value="igst">Inter-State (IGST)</option>
         </select>
     </div>
-    <button type="button" class="btn-filter-action" id="applyFilterBtn">
-        <i class="fa-solid fa-filter"></i> Apply Filters
-    </button>
     <button type="button" class="btn-filter-reset" id="resetFilterBtn">
-        <i class="fa-solid fa-rotate-left"></i> Reset
+        <i class="fa-solid fa-rotate-left"></i> View All Dates
     </button>
 </div>
 
+<!-- Section 1: Overview & Counts -->
 <div class="section-title"><i class="fa-solid fa-layer-group"></i> Invoice Volume & Value Breakdown</div>
 <div class="metrics-grid-top">
     <div class="metric-card c-blue">
@@ -305,6 +301,7 @@
     </div>
 </div>
 
+<!-- Section 2: Tax Breakdown -->
 <div class="section-title"><i class="fa-solid fa-receipt"></i> GST Breakdown (Filtered)</div>
 <div class="metrics-grid-taxes">
     <div class="metric-card c-violet">
@@ -340,6 +337,7 @@
     </div>
 </div>
 
+<!-- Middle Row: Charts -->
 <div class="charts-grid">
     <div class="chart-panel">
         <div class="panel-header">
@@ -366,6 +364,7 @@
     </div>
 </div>
 
+<!-- Filtered Table -->
 <div class="table-panel">
     <div class="panel-header">
         <div class="panel-title">
@@ -413,8 +412,16 @@
     const dashEndDate = document.getElementById('dashEndDate');
     const dashType = document.getElementById('dashType');
     const dashTaxCat = document.getElementById('dashTaxCat');
-    const applyFilterBtn = document.getElementById('applyFilterBtn');
     const resetFilterBtn = document.getElementById('resetFilterBtn');
+
+    // Get client's current local date in YYYY-MM-DD
+    function getTodayDateString() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
 
     async function loadFilteredDashboard() {
         const params = new URLSearchParams();
@@ -434,10 +441,12 @@
 
             const t = data.totals;
 
+            // 1. Render Counts
             document.getElementById('mTotalCount').textContent = t.total_invoices || 0;
             document.getElementById('mCompCount').textContent = t.computer_count || 0;
             document.getElementById('mManualCount').textContent = t.manual_count || 0;
 
+            // 2. Render Financial Values
             document.getElementById('mNet').textContent = '₹ ' + Number(t.total_net || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
             document.getElementById('mCgst').textContent = '₹ ' + Number(t.total_cgst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
             document.getElementById('mSgst').textContent = '₹ ' + Number(t.total_sgst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
@@ -445,6 +454,7 @@
             document.getElementById('mTotalGst').textContent = '₹ ' + Number(t.total_gst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
             document.getElementById('mGrand').textContent = '₹ ' + Number(t.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
 
+            // 3. Render Pie Chart
             const compCount = data.types['Computer Generated'] || 0;
             const manCount = data.types['Manual'] || 0;
             const ctxPie = document.getElementById('typePieChart').getContext('2d');
@@ -471,6 +481,7 @@
                 }
             });
 
+            // 4. Render Bar Chart
             const labels = (data.trends && data.trends.length) ? data.trends.map(x => x.d_date) : ['No Data'];
             const values = (data.trends && data.trends.length) ? data.trends.map(x => Number(x.day_total)) : [0];
             const ctxBar = document.getElementById('trendBarChart').getContext('2d');
@@ -503,6 +514,7 @@
                 }
             });
 
+            // 5. Populate Filtered Invoices Table
             const recentBody = document.getElementById('recentTableBody');
             if (data.recent && data.recent.length) {
                 recentBody.innerHTML = data.recent.map(r => `
@@ -529,7 +541,7 @@
                 recentBody.innerHTML = `
                     <tr>
                         <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">
-                            No invoices match the selected filter criteria.
+                            No invoices recorded for the selected criteria.
                         </td>
                     </tr>
                 `;
@@ -540,8 +552,13 @@
         }
     }
 
-    applyFilterBtn.addEventListener('click', loadFilteredDashboard);
+    // Instant onchange listeners for all filter inputs
+    dashStartDate.addEventListener('change', loadFilteredDashboard);
+    dashEndDate.addEventListener('change', loadFilteredDashboard);
+    dashType.addEventListener('change', loadFilteredDashboard);
+    dashTaxCat.addEventListener('change', loadFilteredDashboard);
 
+    // Reset button clears dates to view entire history
     resetFilterBtn.addEventListener('click', function() {
         dashStartDate.value = '';
         dashEndDate.value = '';
@@ -550,6 +567,12 @@
         loadFilteredDashboard();
     });
 
-    document.addEventListener('DOMContentLoaded', loadFilteredDashboard);
+    // On initial page load: default to TODAY'S date and query immediately
+    document.addEventListener('DOMContentLoaded', function() {
+        const todayStr = getTodayDateString();
+        dashStartDate.value = todayStr;
+        dashEndDate.value = todayStr;
+        loadFilteredDashboard();
+    });
 </script>
 {% endblock %}
