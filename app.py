@@ -27,12 +27,40 @@ def clean_row(row):
         return {}
     return {k: serialize_row(v) for k, v in row.items()}
 
+# Robust date parser: converts any invoice date string (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD) to a standard date object
+def parse_date_to_comparable(val):
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+
+    s = str(val).strip()
+    # Match YYYY-MM-DD
+    match_iso = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+    if match_iso:
+        try:
+            return date(int(match_iso.group(1)), int(match_iso.group(2)), int(match_iso.group(3)))
+        except ValueError:
+            pass
+
+    # Match DD/MM/YYYY or DD-MM-YYYY
+    match_dmy = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+    if match_dmy:
+        try:
+            return date(int(match_dmy.group(3)), int(match_dmy.group(2)), int(match_dmy.group(1)))
+        except ValueError:
+            pass
+
+    return None
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
 os.makedirs(INVOICE_STORAGE_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = INVOICE_STORAGE_FOLDER
 
-# TiDB Database Connection with Render / Cloudflare SSL fail-safe
+# TiDB Database Connection
 def get_db_connection():
     db_port = os.environ.get("DB_PORT", "4000")
     try:
@@ -212,14 +240,17 @@ def export_view():
 def health_check():
     return jsonify({"status": "healthy"}), 200
 
-# --- API & DATA ROUTES ---
+# --- DATA AND ACTION ROUTES ---
 
 @app.route("/api/dashboard-metrics")
 def get_dashboard_metrics():
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    start_date_str = request.args.get("start_date", "").strip()
+    end_date_str = request.args.get("end_date", "").strip()
     inv_type = request.args.get("type", "all").strip()
     tax_cat = request.args.get("tax_cat", "all").strip()
+
+    start_d = parse_date_to_comparable(start_date_str) if start_date_str else None
+    end_d = parse_date_to_comparable(end_date_str) if end_date_str else None
 
     conn = None
     try:
@@ -235,123 +266,84 @@ def get_dashboard_metrics():
             """)
             has_created_at = cursor.fetchone().get("has_col", 0) > 0
 
-            where_clauses = ["1=1"]
+            date_col = "created_at" if has_created_at else "invoice_date AS created_at"
+
+            query = f"""
+                SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no,
+                       net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, {date_col}
+                FROM invoice_items
+                WHERE 1=1
+            """
             params = []
 
-            if start_date:
-                if has_created_at:
-                    where_clauses.append("(DATE(created_at) >= %s OR invoice_date >= %s)")
-                    params.extend([start_date, start_date])
-                else:
-                    where_clauses.append("invoice_date >= %s")
-                    params.append(start_date)
-
-            if end_date:
-                if has_created_at:
-                    where_clauses.append("(DATE(created_at) <= %s OR invoice_date <= %s)")
-                    params.extend([end_date, end_date])
-                else:
-                    where_clauses.append("invoice_date <= %s")
-                    params.append(end_date)
-
             if inv_type and inv_type != "all":
-                where_clauses.append("invoice_type = %s")
+                query += " AND invoice_type = %s"
                 params.append(inv_type)
 
             if tax_cat == "cgst_sgst":
-                where_clauses.append("(cgst_amount > 0 OR sgst_amount > 0)")
+                query += " AND (cgst_amount > 0 OR sgst_amount > 0)"
             elif tax_cat == "igst":
-                where_clauses.append("igst_amount > 0")
+                query += " AND igst_amount > 0"
 
-            where_sql = " AND ".join(where_clauses)
+            query += " ORDER BY id DESC"
+            cursor.execute(query, tuple(params))
+            all_rows = cursor.fetchall()
 
-            # 1. Total Metrics & Breakdown
-            metric_sql = f"""
-                SELECT 
-                    COUNT(*) as total_invoices,
-                    COALESCE(SUM(CASE WHEN invoice_type = 'Manual' THEN 1 ELSE 0 END), 0) as manual_count,
-                    COALESCE(SUM(CASE WHEN invoice_type = 'Computer Generated' THEN 1 ELSE 0 END), 0) as computer_count,
-                    COALESCE(SUM(net_amount), 0) as total_net,
-                    COALESCE(SUM(cgst_amount), 0) as total_cgst,
-                    COALESCE(SUM(sgst_amount), 0) as total_sgst,
-                    COALESCE(SUM(igst_amount), 0) as total_igst,
-                    COALESCE(SUM(total_gst_amount), 0) as total_gst,
-                    COALESCE(SUM(grand_total), 0) as grand_total
-                FROM invoice_items
-                WHERE {where_sql}
-            """
-            cursor.execute(metric_sql, tuple(params))
-            raw_totals = cursor.fetchone() or {}
-            totals = clean_row(raw_totals)
+        # Date normalization & filtering in Python (handles DD/MM/YYYY, YYYY-MM-DD, created_at)
+        filtered_rows = []
+        for r in all_rows:
+            rec_date = parse_date_to_comparable(r.get("created_at")) or parse_date_to_comparable(r.get("invoice_date"))
+            if start_d and rec_date and rec_date < start_d:
+                continue
+            if end_d and rec_date and rec_date > end_d:
+                continue
+            filtered_rows.append(r)
 
-            # 2. Invoices by Type for Pie Chart
-            type_sql = f"""
-                SELECT invoice_type, COUNT(*) as count 
-                FROM invoice_items 
-                WHERE {where_sql}
-                GROUP BY invoice_type
-            """
-            cursor.execute(type_sql, tuple(params))
-            type_rows = cursor.fetchall()
-            type_counts = {"Computer Generated": 0, "Manual": 0}
-            for row in type_rows:
-                t = str(row.get("invoice_type") or "").strip()
-                cnt = int(row.get("count", 0))
-                if "comp" in t.lower():
-                    type_counts["Computer Generated"] += cnt
-                else:
-                    type_counts["Manual"] += cnt
+        # Aggregate metrics from the correctly filtered rows
+        tot_count = len(filtered_rows)
+        manual_count = sum(1 for r in filtered_rows if r.get("invoice_type") == "Manual")
+        comp_count = sum(1 for r in filtered_rows if r.get("invoice_type") == "Computer Generated")
+        net_tot = sum(clean_float(r.get("net_amount")) for r in filtered_rows)
+        cgst_tot = sum(clean_float(r.get("cgst_amount")) for r in filtered_rows)
+        sgst_tot = sum(clean_float(r.get("sgst_amount")) for r in filtered_rows)
+        igst_tot = sum(clean_float(r.get("igst_amount")) for r in filtered_rows)
+        gst_tot = sum(clean_float(r.get("total_gst_amount")) for r in filtered_rows)
+        grand_tot = sum(clean_float(r.get("grand_total")) for r in filtered_rows)
 
-            # 3. Trends (Using escaped %%Y-%%m-%%d for PyMySQL compatibility)
-            if has_created_at:
-                trend_sql = f"""
-                    SELECT 
-                        COALESCE(DATE_FORMAT(created_at, '%%Y-%%m-%%d'), 'General') as d_date, 
-                        COALESCE(SUM(grand_total), 0) as day_total
-                    FROM invoice_items
-                    WHERE {where_sql}
-                    GROUP BY d_date
-                    ORDER BY d_date DESC
-                    LIMIT 7
-                """
-            else:
-                trend_sql = f"""
-                    SELECT 
-                        COALESCE(invoice_date, 'Batch') as d_date, 
-                        COALESCE(SUM(grand_total), 0) as day_total
-                    FROM invoice_items
-                    WHERE {where_sql}
-                    GROUP BY d_date
-                    ORDER BY id DESC
-                    LIMIT 7
-                """
-            cursor.execute(trend_sql, tuple(params))
-            raw_trends = cursor.fetchall()
-            trends = [clean_row(r) for r in raw_trends]
-            trends.reverse()
+        totals = {
+            "total_invoices": tot_count,
+            "manual_count": manual_count,
+            "computer_count": comp_count,
+            "total_net": net_tot,
+            "total_cgst": cgst_tot,
+            "total_sgst": sgst_tot,
+            "total_igst": igst_tot,
+            "total_gst": gst_tot,
+            "grand_total": grand_tot
+        }
 
-            # 4. Recent Matching Records
-            date_col = "created_at" if has_created_at else "invoice_date AS created_at"
-            recent_sql = f"""
-                SELECT id, company_name, invoice_no, invoice_date, invoice_type, cgst_amount, sgst_amount, igst_amount, grand_total, {date_col}
-                FROM invoice_items
-                WHERE {where_sql}
-                ORDER BY id DESC
-                LIMIT 8
-            """
-            cursor.execute(recent_sql, tuple(params))
-            raw_recent = cursor.fetchall()
-            recent_invoices = [clean_row(r) for r in raw_recent]
+        # Daily timeline aggregates
+        day_map = {}
+        for r in filtered_rows:
+            d_obj = parse_date_to_comparable(r.get("created_at")) or parse_date_to_comparable(r.get("invoice_date"))
+            d_label = d_obj.strftime("%Y-%m-%d") if d_obj else "General"
+            day_map[d_label] = day_map.get(d_label, 0.0) + clean_float(r.get("grand_total"))
+
+        sorted_days = sorted(day_map.keys())[-7:]
+        trends = [{"d_date": d, "day_total": day_map[d]} for d in sorted_days]
+
+        # Recent records for table preview (top 15)
+        recent = [clean_row(r) for r in filtered_rows[:15]]
 
         return jsonify({
             "success": True,
             "totals": totals,
-            "types": type_counts,
+            "types": {"Computer Generated": comp_count, "Manual": manual_count},
             "trends": trends,
-            "recent": recent_invoices
+            "recent": recent
         })
     except Exception as e:
-        print(f"Metrics Exception: {e}")
+        print(f"Metrics Error: {e}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -468,9 +460,12 @@ def save_batch():
 
 @app.route("/api/export-preview")
 def export_preview():
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    start_date_str = request.args.get("start_date", "").strip()
+    end_date_str = request.args.get("end_date", "").strip()
     inv_type = request.args.get("type", "all").strip()
+
+    start_d = parse_date_to_comparable(start_date_str) if start_date_str else None
+    end_d = parse_date_to_comparable(end_date_str) if end_date_str else None
 
     conn = None
     try:
@@ -495,32 +490,24 @@ def export_preview():
             """
             params = []
 
-            if start_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) >= %s OR invoice_date >= %s)"
-                    params.extend([start_date, start_date])
-                else:
-                    query += " AND invoice_date >= %s"
-                    params.append(start_date)
-
-            if end_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) <= %s OR invoice_date <= %s)"
-                    params.extend([end_date, end_date])
-                else:
-                    query += " AND invoice_date <= %s"
-                    params.append(end_date)
-
             if inv_type and inv_type != "all":
                 query += " AND invoice_type = %s"
                 params.append(inv_type)
 
-            query += " ORDER BY id DESC LIMIT 500"
-
+            query += " ORDER BY id DESC"
             cursor.execute(query, tuple(params))
-            raw_rows = cursor.fetchall()
-            cleaned_rows = [clean_row(r) for r in raw_rows]
-        return jsonify({"success": True, "rows": cleaned_rows})
+            all_rows = cursor.fetchall()
+
+        filtered_rows = []
+        for r in all_rows:
+            rec_date = parse_date_to_comparable(r.get("created_at")) or parse_date_to_comparable(r.get("invoice_date"))
+            if start_d and rec_date and rec_date < start_d:
+                continue
+            if end_d and rec_date and rec_date > end_d:
+                continue
+            filtered_rows.append(clean_row(r))
+
+        return jsonify({"success": True, "rows": filtered_rows[:500]})
     except Exception as e:
         print(f"Export Error: {e}")
         return jsonify({"success": False, "error": str(e), "rows": []}), 200
@@ -533,9 +520,12 @@ def export_preview():
 
 @app.route("/export-csv")
 def export_csv():
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    start_date_str = request.args.get("start_date", "").strip()
+    end_date_str = request.args.get("end_date", "").strip()
     inv_type = request.args.get("type", "all").strip()
+
+    start_d = parse_date_to_comparable(start_date_str) if start_date_str else None
+    end_d = parse_date_to_comparable(end_date_str) if end_date_str else None
 
     conn = None
     try:
@@ -559,30 +549,22 @@ def export_csv():
             """
             params = []
 
-            if start_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) >= %s OR invoice_date >= %s)"
-                    params.extend([start_date, start_date])
-                else:
-                    query += " AND invoice_date >= %s"
-                    params.append(start_date)
-
-            if end_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) <= %s OR invoice_date <= %s)"
-                    params.extend([end_date, end_date])
-                else:
-                    query += " AND invoice_date <= %s"
-                    params.append(end_date)
-
             if inv_type and inv_type != "all":
                 query += " AND invoice_type = %s"
                 params.append(inv_type)
 
             query += " ORDER BY id ASC"
-
             cursor.execute(query, tuple(params))
-            records = cursor.fetchall()
+            all_records = cursor.fetchall()
+
+        filtered_records = []
+        for r in all_records:
+            rec_date = parse_date_to_comparable(r.get("created_at")) or parse_date_to_comparable(r.get("invoice_date"))
+            if start_d and rec_date and rec_date < start_d:
+                continue
+            if end_d and rec_date and rec_date > end_d:
+                continue
+            filtered_records.append(r)
 
         output = io.StringIO()
         writer = csv.writer(output)
@@ -592,7 +574,7 @@ def export_csv():
             "Total GST", "Grand Total", "Date"
         ])
 
-        for r in records:
+        for r in filtered_records:
             writer.writerow([
                 r["id"], r["batch_id"], r["invoice_type"], r["company_name"], r["invoice_no"],
                 r["invoice_date"], r["gst_no"], r["net_amount"], r["cgst_amount"],
