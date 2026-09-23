@@ -38,7 +38,7 @@
         .brand { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
         .workspace {
-            max-width: 1750px;
+            max-width: 1800px;
             margin: 24px auto;
             padding: 0 24px;
             display: grid;
@@ -162,6 +162,28 @@
             box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
         }
 
+        /* Type Dropdown Styles */
+        .type-select {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            outline: none;
+            cursor: pointer;
+            background-color: #ffffff;
+        }
+        .type-computer {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+            border-color: #bfdbfe;
+        }
+        .type-manual {
+            background-color: #fffbeb;
+            color: #b45309;
+            border-color: #fde68a;
+        }
+
         .badge-pending { background: var(--warning-bg); color: var(--warning-text); padding: 3px 6px; border-radius: 4px; font-weight: 600; }
         .badge-saved { background: #ecfdf5; color: #047857; padding: 3px 6px; border-radius: 4px; font-weight: 600; }
     </style>
@@ -241,6 +263,7 @@
                 <thead>
                     <tr>
                         <th>Status</th>
+                        <th>Invoice Type</th>
                         <th>Company</th>
                         <th>Invoice No</th>
                         <th>Date</th>
@@ -257,7 +280,7 @@
                 </thead>
                 <tbody id="detailTableBody">
                     <tr id="emptyRow">
-                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+                        <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
                             No invoices queued yet. Upload files one by one to see details here.
                         </td>
                     </tr>
@@ -347,19 +370,33 @@
             try {
                 data = JSON.parse(resText);
             } catch (err) {
-                // If HTML error page was returned by server
                 throw new Error("Server error or timeout. Please check your Render service logs.");
             }
 
             if (data.success) {
                 emptyRow.style.display = 'none';
                 const invIndex = stagedInvoices.length;
+                
+                // Fallback guarantee for invoice type
+                if (!data.data.type || !["Computer Generated", "Manual"].includes(data.data.type)) {
+                    data.data.type = "Manual";
+                }
+                
                 stagedInvoices.push(data.data);
+
+                const currentType = data.data.type;
+                const selectClass = currentType === 'Computer Generated' ? 'type-computer' : 'type-manual';
 
                 const tr = document.createElement('tr');
                 tr.className = 'staged-row';
                 tr.innerHTML = `
                     <td><span class="badge-pending">Queue</span></td>
+                    <td>
+                        <select class="type-select ${selectClass}" data-index="${invIndex}">
+                            <option value="Computer Generated" ${currentType === 'Computer Generated' ? 'selected' : ''}>💻 Computer Generated</option>
+                            <option value="Manual" ${currentType === 'Manual' ? 'selected' : ''}>✍️ Manual</option>
+                        </select>
+                    </td>
                     <td class="editable-cell" contenteditable="true" data-field="company_name" data-index="${invIndex}" style="font-weight: 600;">${data.data.company_name}</td>
                     <td class="editable-cell" contenteditable="true" data-field="invoice_no" data-index="${invIndex}">${data.data.invoice_no}</td>
                     <td class="editable-cell" contenteditable="true" data-field="date" data-index="${invIndex}">${data.data.date}</td>
@@ -375,7 +412,19 @@
                 `;
                 detailTableBody.appendChild(tr);
 
-                // Add live listener for manual corrections in the table
+                // Handle interactive Invoice Type dropdown changes
+                const typeDropdown = tr.querySelector('.type-select');
+                typeDropdown.addEventListener('change', function() {
+                    const idx = parseInt(this.getAttribute('data-index'));
+                    stagedInvoices[idx].type = this.value;
+                    if (this.value === 'Computer Generated') {
+                        this.className = 'type-select type-computer';
+                    } else {
+                        this.className = 'type-select type-manual';
+                    }
+                });
+
+                // Handle manual inline corrections
                 tr.querySelectorAll('.editable-cell').forEach(cell => {
                     cell.addEventListener('blur', function() {
                         const idx = parseInt(this.getAttribute('data-index'));
@@ -421,7 +470,7 @@
             try {
                 data = JSON.parse(resText);
             } catch(e) {
-                throw new Error("Server returned non-JSON. Verify TiDB database status in Render.");
+                throw new Error("Server returned non-JSON. Verify TiDB/MySQL database status in Render.");
             }
 
             if (data.success) {
