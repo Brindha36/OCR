@@ -14,6 +14,7 @@ from google.genai import types
 
 app = Flask(__name__)
 
+# JSON serializer to prevent 500/520 crashes with Decimal/Datetime
 def serialize_row(obj):
     if isinstance(obj, (datetime, date)):
         return obj.strftime("%Y-%m-%d %H:%M:%S")
@@ -31,21 +32,30 @@ INVOICE_STORAGE_FOLDER = os.path.join(BASE_DIR, "uploaded_invoices")
 os.makedirs(INVOICE_STORAGE_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = INVOICE_STORAGE_FOLDER
 
-DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "127.0.0.1"),
-    "user": os.environ.get("DB_USER", "root"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-    "database": os.environ.get("DB_NAME") or "invoice_db",
-    "port": int(os.environ.get("DB_PORT", 3306)),
-    "connect_timeout": 10,
-    "cursorclass": pymysql.cursors.DictCursor
-}
-
+# Fail-safe TiDB / MySQL connection config
 def get_db_connection():
-    config = dict(DB_CONFIG)
-    if os.environ.get("DB_SSL") == "true":
-        config["ssl"] = {"ssl_mode": "REQUIRED"}
-    return pymysql.connect(**config)
+    db_port = os.environ.get("DB_PORT", "4000")
+    try:
+        port_num = int(db_port)
+    except ValueError:
+        port_num = 4000
+
+    conn_kwargs = {
+        "host": os.environ.get("DB_HOST", "127.0.0.1"),
+        "user": os.environ.get("DB_USER", "root"),
+        "password": os.environ.get("DB_PASSWORD", ""),
+        "database": os.environ.get("DB_NAME") or "invoice_db",
+        "port": port_num,
+        "connect_timeout": 15,
+        "cursorclass": pymysql.cursors.DictCursor
+    }
+
+    # TiDB on Render requires SSL encryption
+    ssl_env = os.environ.get("DB_SSL", "true").lower()
+    if ssl_env in ["true", "1", "required"]:
+        conn_kwargs["ssl"] = {"ssl_mode": "REQUIRED"}
+
+    return pymysql.connect(**conn_kwargs)
 
 def get_client():
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -61,7 +71,7 @@ def get_available_flash_models(client):
             if "flash" in name.lower():
                 valid_models.append(name)
     except Exception as e:
-        print(f"Fallback listing: {e}")
+        print(f"Model listing fallback: {e}")
     if not valid_models:
         valid_models = ["gemini-2.5-flash", "gemini-2.0-flash"]
     return valid_models
@@ -169,7 +179,7 @@ Financial Rules:
             data["type"] = "Manual"
 
         return data
-    except Exception as e:
+    except Exception:
         return {
             "company_name": "Not found",
             "invoice_no": "Not found",
@@ -197,13 +207,17 @@ def upload_view():
 def export_view():
     return render_template("export.html")
 
+@app.route("/healthz")
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
 @app.route("/api/dashboard-metrics")
 def get_dashboard_metrics():
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # 1. Total Metrics (using COALESCE to guarantee numbers, never NULL)
+            # 1. Primary Aggregates
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total_invoices,
@@ -218,7 +232,7 @@ def get_dashboard_metrics():
             raw_totals = cursor.fetchone() or {}
             totals = clean_row(raw_totals)
 
-            # 2. Type distribution counts
+            # 2. Invoices by Type
             cursor.execute("""
                 SELECT invoice_type, COUNT(*) as count 
                 FROM invoice_items 
@@ -234,56 +248,27 @@ def get_dashboard_metrics():
                 else:
                     type_counts["Manual"] += cnt
 
-            # 3. Trends: Check if created_at column exists dynamically
+            # 3. Trends
             cursor.execute("""
-                SELECT COUNT(*) as has_col 
-                FROM information_schema.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                  AND TABLE_NAME = 'invoice_items' 
-                  AND COLUMN_NAME = 'created_at'
+                SELECT 
+                    COALESCE(DATE_FORMAT(created_at, '%Y-%m-%d'), 'General') as d_date, 
+                    COALESCE(SUM(grand_total), 0) as day_total
+                FROM invoice_items
+                GROUP BY d_date
+                ORDER BY d_date DESC
+                LIMIT 7
             """)
-            has_created_at = cursor.fetchone().get("has_col", 0) > 0
-
-            if has_created_at:
-                cursor.execute("""
-                    SELECT 
-                        COALESCE(DATE_FORMAT(created_at, '%Y-%m-%d'), 'Recent') as d_date, 
-                        SUM(grand_total) as day_total
-                    FROM invoice_items
-                    GROUP BY d_date
-                    ORDER BY d_date DESC
-                    LIMIT 7
-                """)
-            else:
-                cursor.execute("""
-                    SELECT 
-                        COALESCE(invoice_date, 'Batch') as d_date, 
-                        SUM(grand_total) as day_total
-                    FROM invoice_items
-                    GROUP BY d_date
-                    ORDER BY id DESC
-                    LIMIT 7
-                """)
-
             raw_trends = cursor.fetchall()
             trends = [clean_row(r) for r in raw_trends]
             trends.reverse()
 
-            # 4. Recent records for the dashboard preview
-            if has_created_at:
-                cursor.execute("""
-                    SELECT id, company_name, invoice_no, invoice_date, invoice_type, grand_total, created_at
-                    FROM invoice_items
-                    ORDER BY id DESC
-                    LIMIT 5
-                """)
-            else:
-                cursor.execute("""
-                    SELECT id, company_name, invoice_no, invoice_date, invoice_type, grand_total, NOW() as created_at
-                    FROM invoice_items
-                    ORDER BY id DESC
-                    LIMIT 5
-                """)
+            # 4. Recent records
+            cursor.execute("""
+                SELECT id, company_name, invoice_no, invoice_date, invoice_type, grand_total, created_at
+                FROM invoice_items
+                ORDER BY id DESC
+                LIMIT 5
+            """)
             raw_recent = cursor.fetchall()
             recent_invoices = [clean_row(r) for r in raw_recent]
 
@@ -295,11 +280,22 @@ def get_dashboard_metrics():
             "recent": recent_invoices
         })
     except Exception as e:
-        print(f"Error in dashboard-metrics API: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"TiDB Query Exception: {e}")
+        # Return fallback zeroed structure instead of crashing HTTP 500/520
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "totals": {"total_invoices": 0, "total_net": 0, "total_cgst": 0, "total_sgst": 0, "total_gst": 0, "grand_total": 0},
+            "types": {"Computer Generated": 0, "Manual": 0},
+            "trends": [],
+            "recent": []
+        }), 200
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -391,7 +387,10 @@ def save_batch():
         return jsonify({"success": False, "error": str(e)}), 200
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route("/api/export-preview")
 def export_preview():
@@ -399,62 +398,45 @@ def export_preview():
     end_date = request.args.get("end_date", "").strip()
     inv_type = request.args.get("type", "all").strip()
 
+    query = """
+        SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no, 
+               net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, created_at 
+        FROM invoice_items 
+        WHERE 1=1
+    """
+    params = []
+
+    if start_date:
+        query += " AND DATE(created_at) >= %s"
+        params.append(start_date)
+
+    if end_date:
+        query += " AND DATE(created_at) <= %s"
+        params.append(end_date)
+
+    if inv_type and inv_type != "all":
+        query += " AND invoice_type = %s"
+        params.append(inv_type)
+
+    query += " ORDER BY id DESC LIMIT 500"
+
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # Check if created_at column exists
-            cursor.execute("""
-                SELECT COUNT(*) as has_col 
-                FROM information_schema.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                  AND TABLE_NAME = 'invoice_items' 
-                  AND COLUMN_NAME = 'created_at'
-            """)
-            has_created_at = cursor.fetchone().get("has_col", 0) > 0
-
-            # Safe SELECT ensuring created_at is always returned
-            if has_created_at:
-                query = "SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no, net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, created_at FROM invoice_items WHERE 1=1"
-            else:
-                query = "SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no, net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, NOW() as created_at FROM invoice_items WHERE 1=1"
-
-            params = []
-
-            # Date filtering with fallback to invoice_date if created_at does not exist
-            if start_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) >= %s OR invoice_date >= %s)"
-                    params.extend([start_date, start_date])
-                else:
-                    query += " AND invoice_date >= %s"
-                    params.append(start_date)
-
-            if end_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) <= %s OR invoice_date <= %s)"
-                    params.extend([end_date, end_date])
-                else:
-                    query += " AND invoice_date <= %s"
-                    params.append(end_date)
-
-            if inv_type and inv_type != "all":
-                query += " AND invoice_type = %s"
-                params.append(inv_type)
-
-            query += " ORDER BY id DESC LIMIT 500"
-
             cursor.execute(query, tuple(params))
             raw_rows = cursor.fetchall()
             cleaned_rows = [clean_row(r) for r in raw_rows]
-
         return jsonify({"success": True, "rows": cleaned_rows})
     except Exception as e:
         print(f"Export preview exception: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e), "rows": []}), 200
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route("/export-csv")
 def export_csv():
@@ -462,54 +444,29 @@ def export_csv():
     end_date = request.args.get("end_date", "").strip()
     inv_type = request.args.get("type", "all").strip()
 
-    conn = get_db_connection()
+    query = """
+        SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no,
+               net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, created_at
+        FROM invoice_items WHERE 1=1
+    """
+    params = []
+
+    if start_date:
+        query += " AND DATE(created_at) >= %s"
+        params.append(start_date)
+    if end_date:
+        query += " AND DATE(created_at) <= %s"
+        params.append(end_date)
+    if inv_type and inv_type != "all":
+        query += " AND invoice_type = %s"
+        params.append(inv_type)
+
+    query += " ORDER BY id ASC"
+
+    conn = None
     try:
+        conn = get_db_connection()
         with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT COUNT(*) as has_col 
-                FROM information_schema.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                  AND TABLE_NAME = 'invoice_items' 
-                  AND COLUMN_NAME = 'created_at'
-            """)
-            has_created_at = cursor.fetchone().get("has_col", 0) > 0
-
-            if has_created_at:
-                query = """
-                    SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no,
-                           net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, created_at
-                    FROM invoice_items WHERE 1=1
-                """
-            else:
-                query = """
-                    SELECT id, batch_id, invoice_type, company_name, invoice_no, invoice_date, gst_no,
-                           net_amount, cgst_amount, sgst_amount, igst_amount, total_gst_amount, grand_total, NOW() as created_at
-                    FROM invoice_items WHERE 1=1
-                """
-
-            params = []
-            if start_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) >= %s OR invoice_date >= %s)"
-                    params.extend([start_date, start_date])
-                else:
-                    query += " AND invoice_date >= %s"
-                    params.append(start_date)
-
-            if end_date:
-                if has_created_at:
-                    query += " AND (DATE(created_at) <= %s OR invoice_date <= %s)"
-                    params.extend([end_date, end_date])
-                else:
-                    query += " AND invoice_date <= %s"
-                    params.append(end_date)
-
-            if inv_type and inv_type != "all":
-                query += " AND invoice_type = %s"
-                params.append(inv_type)
-
-            query += " ORDER BY id ASC"
-
             cursor.execute(query, tuple(params))
             records = cursor.fetchall()
 
@@ -537,9 +494,16 @@ def export_csv():
             mimetype="text/csv",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except Exception as e:
+        return f"Export failed: {str(e)}", 500
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5050))
+    # Render binds automatically to the PORT environment variable (default 10000)
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
