@@ -38,6 +38,17 @@
     .filter-group input:focus, .filter-group select:focus {
         border-color: var(--primary);
     }
+    .btn-action {
+        background-color: var(--primary);
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-action:hover { background-color: var(--primary-hover); }
     .btn-download {
         background-color: var(--success);
         color: white;
@@ -47,18 +58,24 @@
         font-size: 0.82rem;
         font-weight: 600;
         cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
     }
     .btn-download:hover { background-color: #15803d; }
+    .btn-reset {
+        background: #f1f5f9;
+        color: #475569;
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 0.82rem;
+        cursor: pointer;
+    }
 
     .table-wrapper {
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 10px;
         overflow-x: auto;
-        max-height: 540px;
+        max-height: 560px;
     }
     table {
         width: 100%;
@@ -76,7 +93,7 @@
         border-bottom: 1px solid var(--border);
         white-space: nowrap;
     }
-    th { font-weight: 600; color: var(--text-muted); }
+    th { font-weight: 600; color: var(--text-muted); text-align: left; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
 </style>
 {% endblock %}
@@ -84,11 +101,11 @@
 {% block content %}
 <div class="filter-bar">
     <div class="filter-group">
-        <label>Start Date</label>
+        <label>Start Date (Optional)</label>
         <input type="date" id="startDate">
     </div>
     <div class="filter-group">
-        <label>End Date</label>
+        <label>End Date (Optional)</label>
         <input type="date" id="endDate">
     </div>
     <div class="filter-group">
@@ -99,10 +116,13 @@
             <option value="Manual">Manual</option>
         </select>
     </div>
-    <button type="button" class="btn-action" id="filterBtn" style="padding: 8px 16px;">
-        🔍 Filter Preview
+    <button type="button" class="btn-action" id="filterBtn">
+        🔍 Filter Database
     </button>
-    <button type="button" class="btn-download" id="downloadCsvBtn">
+    <button type="button" class="btn-reset" id="resetBtn">
+        Clear Filters
+    </button>
+    <button type="button" class="btn-download" id="downloadCsvBtn" style="margin-left: auto;">
         📥 Download CSV
     </button>
 </div>
@@ -129,8 +149,8 @@
         </thead>
         <tbody id="exportTableBody">
             <tr>
-                <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                    Select filters above and click "Filter Preview" to view records.
+                <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                    Connecting to database...
                 </td>
             </tr>
         </tbody>
@@ -144,68 +164,74 @@
     const endDate = document.getElementById('endDate');
     const filterType = document.getElementById('filterType');
     const filterBtn = document.getElementById('filterBtn');
+    const resetBtn = document.getElementById('resetBtn');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     const exportTableBody = document.getElementById('exportTableBody');
 
-    // Default to current month
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const today = now.toISOString().split('T')[0];
-    startDate.value = firstDay;
-    endDate.value = today;
-
     async function fetchFilteredRows() {
-        const params = new URLSearchParams({
-            start_date: startDate.value,
-            end_date: endDate.value,
-            type: filterType.value
-        });
+        const params = new URLSearchParams();
+        if (startDate.value) params.append('start_date', startDate.value);
+        if (endDate.value) params.append('end_date', endDate.value);
+        if (filterType.value && filterType.value !== 'all') params.append('type', filterType.value);
 
-        exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 30px;">Loading...</td></tr>`;
+        exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 30px;">Loading database records...</td></tr>`;
 
         try {
             const res = await fetch(`/api/export-preview?${params.toString()}`);
             const data = await res.json();
 
-            if (!data.success || !data.rows.length) {
-                exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--text-muted); padding: 30px;">No invoices found for selected range.</td></tr>`;
+            if (!data.success) {
+                exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--danger); padding: 30px;">Database Error: ${data.error}</td></tr>`;
+                return;
+            }
+
+            if (!data.rows || !data.rows.length) {
+                exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--text-muted); padding: 30px;">No invoices found in database for this selection.</td></tr>`;
                 return;
             }
 
             exportTableBody.innerHTML = data.rows.map(r => `
                 <tr>
-                    <td>${r.id}</td>
+                    <td>#${r.id}</td>
                     <td>#${r.batch_id}</td>
                     <td>${r.created_at ? r.created_at.substring(0, 10) : '-'}</td>
-                    <td><b>${r.invoice_type}</b></td>
-                    <td style="font-weight: 600;">${r.company_name}</td>
-                    <td>${r.invoice_no}</td>
-                    <td>${r.invoice_date}</td>
-                    <td>${r.gst_no}</td>
-                    <td class="num">₹ ${Number(r.net_amount).toFixed(2)}</td>
-                    <td class="num">₹ ${Number(r.cgst_amount).toFixed(2)}</td>
-                    <td class="num">₹ ${Number(r.sgst_amount).toFixed(2)}</td>
-                    <td class="num">₹ ${Number(r.igst_amount).toFixed(2)}</td>
-                    <td class="num" style="color: var(--primary); font-weight: 600;">₹ ${Number(r.total_gst_amount).toFixed(2)}</td>
-                    <td class="num" style="color: var(--success); font-weight: 700;">₹ ${Number(r.grand_total).toFixed(2)}</td>
+                    <td><b>${r.invoice_type || 'Manual'}</b></td>
+                    <td style="font-weight: 600;">${r.company_name || 'N/A'}</td>
+                    <td>${r.invoice_no || '-'}</td>
+                    <td>${r.invoice_date || '-'}</td>
+                    <td>${r.gst_no || '-'}</td>
+                    <td class="num">₹ ${Number(r.net_amount || 0).toFixed(2)}</td>
+                    <td class="num">₹ ${Number(r.cgst_amount || 0).toFixed(2)}</td>
+                    <td class="num">₹ ${Number(r.sgst_amount || 0).toFixed(2)}</td>
+                    <td class="num">₹ ${Number(r.igst_amount || 0).toFixed(2)}</td>
+                    <td class="num" style="color: var(--primary); font-weight: 600;">₹ ${Number(r.total_gst_amount || 0).toFixed(2)}</td>
+                    <td class="num" style="color: var(--success); font-weight: 700;">₹ ${Number(r.grand_total || 0).toFixed(2)}</td>
                 </tr>
             `).join('');
         } catch (e) {
-            exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: var(--danger); padding: 30px;">Failed to load data.</td></tr>`;
+            exportTableBody.innerHTML = `<tr><td colspan="14" style="text-align: center; color: red; padding: 30px;">Failed to connect to backend: ${e.message}</td></tr>`;
         }
     }
 
     filterBtn.addEventListener('click', fetchFilteredRows);
 
+    resetBtn.addEventListener('click', function() {
+        startDate.value = '';
+        endDate.value = '';
+        filterType.value = 'all';
+        fetchFilteredRows();
+    });
+
     downloadCsvBtn.addEventListener('click', function() {
-        const params = new URLSearchParams({
-            start_date: startDate.value,
-            end_date: endDate.value,
-            type: filterType.value
-        });
+        const params = new URLSearchParams();
+        if (startDate.value) params.append('start_date', startDate.value);
+        if (endDate.value) params.append('end_date', endDate.value);
+        if (filterType.value && filterType.value !== 'all') params.append('type', filterType.value);
+
         window.location.href = `/export-csv?${params.toString()}`;
     });
 
+    // Auto-fetch all invoices immediately on load
     document.addEventListener('DOMContentLoaded', fetchFilteredRows);
 </script>
 {% endblock %}
