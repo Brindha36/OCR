@@ -1,140 +1,596 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Invoice Management System{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --surface: #ffffff;
-            --background: #f8fafc;
-            --border: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --success: #16a34a;
-            --sidebar-width: 240px;
+{% extends "base.html" %}
+{% block title %}Dashboard | Dynamic Analytics{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Invoice Analytics & Overview{% endblock %}
+
+{% block head %}
+<style>
+    .dashboard-filter-bar {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+    .filter-item {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        flex: 1 1 180px;
+        min-width: 140px;
+    }
+    .filter-item label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+    .filter-item input, .filter-item select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        font-size: 0.8rem;
+        outline: none;
+        background: #f8fafc;
+        color: #1e293b;
+        font-weight: 500;
+        cursor: pointer;
+    }
+    .filter-item input:focus, .filter-item select:focus {
+        border-color: var(--primary);
+        background: #ffffff;
+    }
+    .btn-filter-reset {
+        background: #f1f5f9;
+        color: #475569;
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        font-weight: 600;
+        height: 35px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .btn-filter-reset:hover {
+        background: #e2e8f0;
+    }
+
+    .section-title {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 10px;
+    }
+    .metrics-grid-top {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+    .metrics-grid-taxes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 14px;
+        margin-bottom: 22px;
+    }
+
+    .metric-card {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+    }
+
+    .c-blue::before { background: #3b82f6; }
+    .c-indigo::before { background: #6366f1; }
+    .c-amber::before { background: #f59e0b; }
+    .c-emerald::before { background: #10b981; }
+    .c-violet::before { background: #8b5cf6; }
+    .c-purple::before { background: #a855f7; }
+    .c-pink::before { background: #ec4899; }
+    .c-teal::before { background: #0d9488; }
+
+    .card-top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .metric-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+    }
+    .icon-bubble {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+    }
+    .c-blue .icon-bubble { background: #dbeafe; color: #2563eb; }
+    .c-indigo .icon-bubble { background: #e0e7ff; color: #4f46e5; }
+    .c-amber .icon-bubble { background: #fef3c7; color: #d97706; }
+    .c-emerald .icon-bubble { background: #d1fae5; color: #059669; }
+    .c-violet .icon-bubble { background: #ede9fe; color: #7c3aed; }
+    .c-purple .icon-bubble { background: #f3e8ff; color: #9333ea; }
+    .c-pink .icon-bubble { background: #fce7f3; color: #db2777; }
+    .c-teal .icon-bubble { background: #ccfbf1; color: #0f766e; }
+
+    .metric-val {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-top: 6px;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+    }
+    .metric-val.highlight { color: #059669; }
+
+    /* Responsive Chart Container */
+    .charts-grid {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr);
+        gap: 16px;
+        margin-bottom: 22px;
+    }
+    .chart-panel {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
+    .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    .panel-title {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Table Container with Horizontal Scroll */
+    .table-panel {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
+    .table-responsive-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid #f1f5f9;
+        border-radius: 8px;
+        width: 100%;
+    }
+    .table-clean {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.76rem;
+        white-space: nowrap;
+    }
+    .table-clean thead th {
+        background: #f8fafc;
+        color: #64748b;
+        font-weight: 600;
+        padding: 10px 12px;
+        border-bottom: 1px solid #e2e8f0;
+        text-align: left;
+    }
+    .table-clean tbody td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+    }
+    .badge-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 14px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .badge-comp { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .badge-man { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+
+    /* Mobile Breakpoints */
+    @media (max-width: 900px) {
+        .charts-grid {
+            grid-template-columns: 1fr;
         }
+    }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-        body { background-color: var(--background); color: var(--text-main); min-height: 100vh; display: flex; }
-
-        aside.sidebar {
-            width: var(--sidebar-width);
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            z-index: 100;
-        }
-
-        .sidebar-brand {
-            padding: 20px 18px;
-            font-size: 1.05rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
+    @media (max-width: 600px) {
+        .metrics-grid-top, .metrics-grid-taxes {
+            grid-template-columns: 1fr 1fr;
             gap: 10px;
-            border-bottom: 1px solid var(--border);
-            color: var(--primary);
         }
-
-        .nav-list {
-            list-style: none;
-            padding: 16px 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+        .metric-card {
+            padding: 12px;
         }
-
-        .nav-item a {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 11px 14px;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 600;
-            border-radius: 8px;
-            transition: all 0.15s ease;
+        .metric-val {
+            font-size: 1.1rem;
         }
+    }
+</style>
+{% endblock %}
 
-        .nav-item a:hover {
-            background-color: #f1f5f9;
-            color: var(--text-main);
-        }
+{% block content %}
+<!-- Live Filter Toolbar -->
+<div class="dashboard-filter-bar">
+    <div class="filter-item">
+        <label>Start Date (Optional)</label>
+        <input type="date" id="dashStartDate">
+    </div>
+    <div class="filter-item">
+        <label>End Date (Optional)</label>
+        <input type="date" id="dashEndDate">
+    </div>
+    <div class="filter-item">
+        <label>Invoice Type</label>
+        <select id="dashType">
+            <option value="all">All (Computer & Manual)</option>
+            <option value="Computer Generated">Computer Generated</option>
+            <option value="Manual">Manual</option>
+        </select>
+    </div>
+    <div class="filter-item">
+        <label>Tax Category</label>
+        <select id="dashTaxCat">
+            <option value="all">All Tax Types</option>
+            <option value="cgst_sgst">Intra-State (CGST + SGST)</option>
+            <option value="igst">Inter-State (IGST)</option>
+        </select>
+    </div>
+    <button type="button" class="btn-filter-reset" id="resetFilterBtn">
+        <i class="fa-solid fa-rotate-left"></i> Clear Filters
+    </button>
+</div>
 
-        .nav-item.active a {
-            background-color: #eff6ff;
-            color: var(--primary);
-        }
-
-        .content-area {
-            margin-left: var(--sidebar-width);
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-            min-height: 100vh;
-        }
-
-        header.top-bar {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 14px 28px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .main-body {
-            padding: 24px 28px;
-            flex: 1;
-        }
-    </style>
-    {% block head %}{% endblock %}
-</head>
-<body>
-
-    <aside class="sidebar">
-        <div class="sidebar-brand">
-            <i class="fa-solid fa-receipt"></i>
-            <span>GST Invoice AI</span>
+<!-- Section 1: Overview & Counts -->
+<div class="section-title"><i class="fa-solid fa-layer-group"></i> Volume & Value Overview</div>
+<div class="metrics-grid-top">
+    <div class="metric-card c-blue">
+        <div class="card-top-row">
+            <span class="metric-label">Total Invoices</span>
+            <div class="icon-bubble"><i class="fa-solid fa-file-invoice"></i></div>
         </div>
-        <ul class="nav-list">
-            <li class="nav-item {% block nav_dashboard %}{% endblock %}">
-                <a href="/"><i class="fa-solid fa-chart-pie"></i> Dashboard</a>
-            </li>
-            <li class="nav-item {% block nav_upload %}{% endblock %}">
-                <a href="/upload"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Invoice</a>
-            </li>
-            <li class="nav-item {% block nav_export %}{% endblock %}">
-                <a href="/export"><i class="fa-solid fa-file-excel"></i> Export Invoice</a>
-            </li>
-        </ul>
-    </aside>
+        <div class="metric-val" id="mTotalCount">0</div>
+    </div>
 
-    <div class="content-area">
-        <header class="top-bar">
-            <div style="font-weight: 700; font-size: 1rem; color: #1e293b;">{% block page_title %}{% endblock %}</div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">Database: <b>invoice_db</b></div>
-        </header>
-        <div class="main-body">
-            {% block content %}{% endblock %}
+    <div class="metric-card c-indigo">
+        <div class="card-top-row">
+            <span class="metric-label">Computer Gen</span>
+            <div class="icon-bubble"><i class="fa-solid fa-laptop"></i></div>
+        </div>
+        <div class="metric-val" id="mCompCount">0</div>
+    </div>
+
+    <div class="metric-card c-amber">
+        <div class="card-top-row">
+            <span class="metric-label">Manual Bills</span>
+            <div class="icon-bubble"><i class="fa-solid fa-pen-nib"></i></div>
+        </div>
+        <div class="metric-val" id="mManualCount">0</div>
+    </div>
+
+    <div class="metric-card c-teal">
+        <div class="card-top-row">
+            <span class="metric-label">Net (Taxable)</span>
+            <div class="icon-bubble"><i class="fa-solid fa-coins"></i></div>
+        </div>
+        <div class="metric-val" id="mNet">₹ 0.00</div>
+    </div>
+
+    <div class="metric-card c-emerald">
+        <div class="card-top-row">
+            <span class="metric-label">Grand Total</span>
+            <div class="icon-bubble"><i class="fa-solid fa-sack-dollar"></i></div>
+        </div>
+        <div class="metric-val highlight" id="mGrand">₹ 0.00</div>
+    </div>
+</div>
+
+<!-- Section 2: Tax Breakdown -->
+<div class="section-title"><i class="fa-solid fa-receipt"></i> Tax Breakdown</div>
+<div class="metrics-grid-taxes">
+    <div class="metric-card c-violet">
+        <div class="card-top-row">
+            <span class="metric-label">CGST</span>
+            <div class="icon-bubble"><i class="fa-solid fa-scale-balanced"></i></div>
+        </div>
+        <div class="metric-val" id="mCgst">₹ 0.00</div>
+    </div>
+
+    <div class="metric-card c-purple">
+        <div class="card-top-row">
+            <span class="metric-label">SGST</span>
+            <div class="icon-bubble"><i class="fa-solid fa-building-columns"></i></div>
+        </div>
+        <div class="metric-val" id="mSgst">₹ 0.00</div>
+    </div>
+
+    <div class="metric-card c-pink">
+        <div class="card-top-row">
+            <span class="metric-label">IGST</span>
+            <div class="icon-bubble"><i class="fa-solid fa-globe"></i></div>
+        </div>
+        <div class="metric-val" id="mIgst">₹ 0.00</div>
+    </div>
+
+    <div class="metric-card c-blue">
+        <div class="card-top-row">
+            <span class="metric-label">Total GST</span>
+            <div class="icon-bubble"><i class="fa-solid fa-calculator"></i></div>
+        </div>
+        <div class="metric-val" style="color: #2563eb;" id="mTotalGst">₹ 0.00</div>
+    </div>
+</div>
+
+<!-- Middle Row: Charts -->
+<div class="charts-grid">
+    <div class="chart-panel">
+        <div class="panel-header">
+            <div class="panel-title">
+                <i class="fa-solid fa-chart-pie" style="color: #6366f1;"></i>
+                <span>Invoice Type Ratio</span>
+            </div>
+        </div>
+        <div style="position: relative; height: 230px;">
+            <canvas id="typePieChart"></canvas>
         </div>
     </div>
 
-    {% block scripts %}{% endblock %}
-</body>
-</html>
+    <div class="chart-panel">
+        <div class="panel-header">
+            <div class="panel-title">
+                <i class="fa-solid fa-chart-column" style="color: #10b981;"></i>
+                <span>Activity Timeline</span>
+            </div>
+        </div>
+        <div style="position: relative; height: 230px;">
+            <canvas id="trendBarChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Filtered Table -->
+<div class="table-panel">
+    <div class="panel-header">
+        <div class="panel-title">
+            <i class="fa-solid fa-list-check" style="color: #0284c7;"></i>
+            <span>Matching Invoice Records</span>
+        </div>
+        <a href="/export" style="font-size: 0.78rem; color: #2563eb; font-weight: 600; text-decoration: none;">
+            Export Full Dataset <i class="fa-solid fa-arrow-right"></i>
+        </a>
+    </div>
+
+    <div class="table-responsive-wrapper">
+        <table class="table-clean">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Vendor / Company</th>
+                    <th>Invoice No</th>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>CGST</th>
+                    <th>SGST</th>
+                    <th>IGST</th>
+                    <th style="text-align: right;">Grand Total</th>
+                </tr>
+            </thead>
+            <tbody id="recentTableBody">
+                <tr>
+                    <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 25px;">
+                        Loading records...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let pieChartInstance = null;
+    let barChartInstance = null;
+
+    const dashStartDate = document.getElementById('dashStartDate');
+    const dashEndDate = document.getElementById('dashEndDate');
+    const dashType = document.getElementById('dashType');
+    const dashTaxCat = document.getElementById('dashTaxCat');
+    const resetFilterBtn = document.getElementById('resetFilterBtn');
+
+    async function loadFilteredDashboard() {
+        const params = new URLSearchParams();
+        if (dashStartDate.value) params.append('start_date', dashStartDate.value);
+        if (dashEndDate.value) params.append('end_date', dashEndDate.value);
+        if (dashType.value && dashType.value !== 'all') params.append('type', dashType.value);
+        if (dashTaxCat.value && dashTaxCat.value !== 'all') params.append('tax_cat', dashTaxCat.value);
+
+        const recentBody = document.getElementById('recentTableBody');
+
+        try {
+            const res = await fetch(`/api/dashboard-metrics?${params.toString()}`);
+            const data = await res.json();
+
+            if (!data.success) {
+                recentBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red; padding: 20px;">Error: ${data.error || 'Failed to fetch'}</td></tr>`;
+                return;
+            }
+
+            const t = data.totals || {};
+
+            document.getElementById('mTotalCount').textContent = t.total_invoices || 0;
+            document.getElementById('mCompCount').textContent = t.computer_count || 0;
+            document.getElementById('mManualCount').textContent = t.manual_count || 0;
+
+            document.getElementById('mNet').textContent = '₹ ' + Number(t.total_net || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+            document.getElementById('mCgst').textContent = '₹ ' + Number(t.total_cgst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+            document.getElementById('mSgst').textContent = '₹ ' + Number(t.total_sgst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+            document.getElementById('mIgst').textContent = '₹ ' + Number(t.total_igst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+            document.getElementById('mTotalGst').textContent = '₹ ' + Number(t.total_gst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+            document.getElementById('mGrand').textContent = '₹ ' + Number(t.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+
+            if (data.recent && data.recent.length > 0) {
+                recentBody.innerHTML = data.recent.map(r => `
+                    <tr>
+                        <td style="font-weight: 700; color: #64748b;">#${r.id}</td>
+                        <td style="font-weight: 600; color: #0f172a;">${r.company_name || 'N/A'}</td>
+                        <td><span style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${r.invoice_no || '-'}</span></td>
+                        <td style="color: #64748b;">${r.invoice_date || '-'}</td>
+                        <td>
+                            <span class="badge-chip ${r.invoice_type === 'Computer Generated' ? 'badge-comp' : 'badge-man'}">
+                                <i class="fa-solid ${r.invoice_type === 'Computer Generated' ? 'fa-laptop' : 'fa-pen-nib'}"></i>
+                                ${r.invoice_type || 'Manual'}
+                            </span>
+                        </td>
+                        <td>₹ ${Number(r.cgst_amount || 0).toFixed(2)}</td>
+                        <td>₹ ${Number(r.sgst_amount || 0).toFixed(2)}</td>
+                        <td>₹ ${Number(r.igst_amount || 0).toFixed(2)}</td>
+                        <td style="text-align: right; font-weight: 700; color: #059669;">
+                            ₹ ${Number(r.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})}
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                recentBody.innerHTML = `
+                    <tr>
+                        <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                            No invoices match the selected filter criteria.
+                        </td>
+                    </tr>
+                `;
+            }
+
+            // Safe Pie Chart Render
+            try {
+                const pieCanvas = document.getElementById('typePieChart');
+                if (pieCanvas && typeof Chart !== 'undefined') {
+                    const compCount = (data.types && data.types['Computer Generated']) ? data.types['Computer Generated'] : 0;
+                    const manCount = (data.types && data.types['Manual']) ? data.types['Manual'] : 0;
+                    const hasData = (compCount + manCount) > 0;
+
+                    if (pieChartInstance) pieChartInstance.destroy();
+                    pieChartInstance = new Chart(pieCanvas.getContext('2d'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: hasData ? ['Computer Generated', 'Manual'] : ['No Data'],
+                            datasets: [{
+                                data: hasData ? [compCount, manCount] : [1],
+                                backgroundColor: hasData ? ['#3b82f6', '#f59e0b'] : ['#e2e8f0'],
+                                borderColor: '#ffffff',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } }
+                            },
+                            cutout: '65%'
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('Pie chart warning:', err);
+            }
+
+            // Safe Bar Chart Render
+            try {
+                const barCanvas = document.getElementById('trendBarChart');
+                if (barCanvas && typeof Chart !== 'undefined') {
+                    const labels = (data.trends && data.trends.length) ? data.trends.map(x => x.d_date) : ['No Data'];
+                    const values = (data.trends && data.trends.length) ? data.trends.map(x => Number(x.day_total)) : [0];
+
+                    if (barChartInstance) barChartInstance.destroy();
+                    barChartInstance = new Chart(barCanvas.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Grand Total (₹)',
+                                data: values,
+                                backgroundColor: '#10b981',
+                                borderRadius: 5,
+                                barThickness: 20
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: '#f1f5f9' },
+                                    ticks: { callback: (v) => '₹ ' + v }
+                                },
+                                x: { grid: { display: false } }
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('Bar chart warning:', err);
+            }
+
+        } catch (e) {
+            recentBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red; padding: 20px;">Connection failed: ${e.message}</td></tr>`;
+        }
+    }
+
+    dashStartDate.addEventListener('change', loadFilteredDashboard);
+    dashEndDate.addEventListener('change', loadFilteredDashboard);
+    dashType.addEventListener('change', loadFilteredDashboard);
+    dashTaxCat.addEventListener('change', loadFilteredDashboard);
+
+    resetFilterBtn.addEventListener('click', function() {
+        dashStartDate.value = '';
+        dashEndDate.value = '';
+        dashType.value = 'all';
+        dashTaxCat.value = 'all';
+        loadFilteredDashboard();
+    });
+
+    document.addEventListener('DOMContentLoaded', loadFilteredDashboard);
+</script>
+{% endblock %}
