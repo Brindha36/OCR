@@ -180,7 +180,6 @@
             text-align: right;
         }
 
-        /* Direct inputs for instant keystroke reactions */
         .table-input {
             width: 100%;
             padding: 4px 6px;
@@ -301,7 +300,7 @@
         </div>
 
         <div class="panel-title" style="margin-top: 4px;">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Detail Items Table (Instant Real-time Keystroke Calculation)</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Detail Items Table (Strict Numeric Validation & Instant Calculation)</span>
         </div>
 
         <div class="table-wrapper">
@@ -361,6 +360,16 @@
         return parseFloat(clean) || 0;
     }
 
+    // Strict number cleaner: leaves only digits and at most one decimal point
+    function cleanNumericInput(str) {
+        let cleaned = String(str).replace(/[^0-9.]/g, '');
+        const parts = cleaned.split('.');
+        if (parts.length > 2) {
+            cleaned = parts[0] + '.' + parts.slice(1).join('');
+        }
+        return cleaned;
+    }
+
     function updateMasterSummary() {
         statCount.textContent = stagedInvoices.length;
         const totalNet = stagedInvoices.reduce((acc, cur) => acc + num(cur.net_amount), 0);
@@ -374,7 +383,6 @@
         saveBatchBtn.disabled = stagedInvoices.length === 0;
     }
 
-    // Instant row recalculator
     function recalculateRow(idx, changedField, tr) {
         const item = stagedInvoices[idx];
         const rate = parseFloat(item.gst_percentage) || 18.0;
@@ -445,7 +453,6 @@
             grand = net + totalGst;
         }
 
-        // Keep local object state updated
         item.net_amount = net.toFixed(2);
         item.cgst_amount = cgst.toFixed(2);
         item.sgst_amount = sgst.toFixed(2);
@@ -453,7 +460,6 @@
         item.total_gst_amount = totalGst.toFixed(2);
         item.grand_total = grand.toFixed(2);
 
-        // Update inputs only if they are not the currently typed input (avoids cursor jump)
         const active = document.activeElement;
         const updateIfInactive = (field, val) => {
             const el = tr.querySelector(`[data-field="${field}"]`);
@@ -556,12 +562,12 @@
                     <td><input type="text" class="table-input" data-field="invoice_no" data-index="${invIndex}" value="${data.data.invoice_no}" style="min-width: 90px;"></td>
                     <td><input type="text" class="table-input" data-field="date" data-index="${invIndex}" value="${data.data.date}" style="min-width: 85px;"></td>
                     <td><input type="text" class="table-input" data-field="gst_no" data-index="${invIndex}" value="${data.data.gst_no}" style="min-width: 130px;"></td>
-                    <td class="num-cell"><input type="text" class="table-input num" data-field="net_amount" data-index="${invIndex}" value="${num(data.data.net_amount).toFixed(2)}" style="min-width: 85px;"></td>
-                    <td class="num-cell"><input type="text" class="table-input num" data-field="cgst_amount" data-index="${invIndex}" value="${num(data.data.cgst_amount).toFixed(2)}" style="min-width: 75px;"></td>
-                    <td class="num-cell"><input type="text" class="table-input num" data-field="sgst_amount" data-index="${invIndex}" value="${num(data.data.sgst_amount).toFixed(2)}" style="min-width: 75px;"></td>
-                    <td class="num-cell"><input type="text" class="table-input num" data-field="igst_amount" data-index="${invIndex}" value="${num(data.data.igst_amount).toFixed(2)}" style="min-width: 75px;"></td>
-                    <td class="num-cell"><input type="text" class="table-input num" data-field="total_gst_amount" data-index="${invIndex}" value="${num(data.data.total_gst_amount).toFixed(2)}" style="min-width: 80px; font-weight: 600; color: var(--primary);"></td>
-                    <td class="num-cell"><input type="text" class="table-input num" data-field="grand_total" data-index="${invIndex}" value="${num(data.data.grand_total).toFixed(2)}" style="min-width: 90px; font-weight: 700; color: var(--success);"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="net_amount" data-index="${invIndex}" value="${num(data.data.net_amount).toFixed(2)}" style="min-width: 85px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="cgst_amount" data-index="${invIndex}" value="${num(data.data.cgst_amount).toFixed(2)}" style="min-width: 75px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="sgst_amount" data-index="${invIndex}" value="${num(data.data.sgst_amount).toFixed(2)}" style="min-width: 75px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="igst_amount" data-index="${invIndex}" value="${num(data.data.igst_amount).toFixed(2)}" style="min-width: 75px;"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="total_gst_amount" data-index="${invIndex}" value="${num(data.data.total_gst_amount).toFixed(2)}" style="min-width: 80px; font-weight: 600; color: var(--primary);"></td>
+                    <td class="num-cell"><input type="text" inputmode="decimal" class="table-input num amount-field" data-field="grand_total" data-index="${invIndex}" value="${num(data.data.grand_total).toFixed(2)}" style="min-width: 90px; font-weight: 700; color: var(--success);"></td>
                 `;
                 detailTableBody.appendChild(tr);
 
@@ -585,27 +591,59 @@
                     recalculateRow(idx, 'gst_percentage', tr);
                 });
 
-                // Instant input event listener (triggers on every keystroke)
-                tr.querySelectorAll('.table-input').forEach(input => {
+                // Text field inputs (Company, Invoice No, Date, GST)
+                tr.querySelectorAll('.table-input:not(.amount-field)').forEach(input => {
                     input.addEventListener('input', function() {
                         const idx = parseInt(this.getAttribute('data-index'));
                         const field = this.getAttribute('data-field');
-                        const val = this.value;
+                        stagedInvoices[idx][field] = this.value;
+                    });
+                });
 
-                        if (['net_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'total_gst_amount', 'grand_total'].includes(field)) {
-                            stagedInvoices[idx][field] = val;
-                            recalculateRow(idx, field, tr);
-                        } else {
-                            stagedInvoices[idx][field] = val;
+                // Strict Numeric Amount inputs
+                tr.querySelectorAll('.amount-field').forEach(input => {
+                    // Block letters and unwanted symbols before they appear
+                    input.addEventListener('keydown', function(e) {
+                        // Allow navigation, control commands, backspace, delete, tab
+                        if ([
+                            'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
+                            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'
+                        ].includes(e.key) || (e.ctrlKey === true || e.metaKey === true)) {
+                            return;
+                        }
+
+                        // Allow only one decimal point
+                        if (e.key === '.') {
+                            if (this.value.includes('.')) {
+                                e.preventDefault();
+                            }
+                            return;
+                        }
+
+                        // Block all non-digit characters (letters, spaces, symbols)
+                        if (e.key < '0' || e.key > '9') {
+                            e.preventDefault();
                         }
                     });
 
-                    // Format nicely with two decimal places on blur
-                    input.addEventListener('blur', function() {
+                    // Sanitize paste/input and calculate instantly
+                    input.addEventListener('input', function() {
+                        const idx = parseInt(this.getAttribute('data-index'));
                         const field = this.getAttribute('data-field');
-                        if (['net_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'total_gst_amount', 'grand_total'].includes(field)) {
-                            this.value = num(this.value).toFixed(2);
+                        
+                        // Sanitize to remove any non-numeric content
+                        const cleaned = cleanNumericInput(this.value);
+                        if (this.value !== cleaned) {
+                            this.value = cleaned;
                         }
+
+                        stagedInvoices[idx][field] = cleaned;
+                        recalculateRow(idx, field, tr);
+                    });
+
+                    // Format to clean two decimals on blur
+                    input.addEventListener('blur', function() {
+                        this.value = num(this.value).toFixed(2);
                     });
                 });
 
