@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -24,7 +25,6 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
         body { background-color: var(--background); color: var(--text-main); min-height: 100vh; display: flex; }
 
-        /* Permanent Left Sidebar */
         aside.sidebar {
             width: var(--sidebar-width);
             background: var(--surface);
@@ -44,7 +44,7 @@
             font-weight: 700;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             border-bottom: 1px solid var(--border);
             color: var(--primary);
         }
@@ -60,8 +60,8 @@
         .nav-item a {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
+            gap: 12px;
+            padding: 11px 14px;
             color: var(--text-muted);
             text-decoration: none;
             font-size: 0.85rem;
@@ -80,7 +80,6 @@
             color: var(--primary);
         }
 
-        /* Main Content Container */
         .content-area {
             margin-left: var(--sidebar-width);
             flex: 1;
@@ -103,41 +102,32 @@
             padding: 24px 28px;
             flex: 1;
         }
-
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 18px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-        }
     </style>
     {% block head %}{% endblock %}
 </head>
 <body>
 
-    <!-- Left Sidebar -->
     <aside class="sidebar">
         <div class="sidebar-brand">
-            <span>📑 TaxInvoice Pro</span>
+            <i class="fa-solid fa-receipt"></i>
+            <span>GST Invoice AI</span>
         </div>
         <ul class="nav-list">
             <li class="nav-item {% block nav_dashboard %}{% endblock %}">
-                <a href="/">📊 Dashboard</a>
+                <a href="/"><i class="fa-solid fa-chart-pie"></i> Dashboard</a>
             </li>
             <li class="nav-item {% block nav_upload %}{% endblock %}">
-                <a href="/upload">📤 Upload Invoice</a>
+                <a href="/upload"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Invoice</a>
             </li>
             <li class="nav-item {% block nav_export %}{% endblock %}">
-                <a href="/export">📥 Export Invoice</a>
+                <a href="/export"><i class="fa-solid fa-file-excel"></i> Export Invoice</a>
             </li>
         </ul>
     </aside>
 
-    <!-- Content Workspace -->
     <div class="content-area">
         <header class="top-bar">
-            <div style="font-weight: 600; font-size: 0.95rem;">{% block page_title %}{% endblock %}</div>
+            <div style="font-weight: 700; font-size: 1rem; color: #1e293b;">{% block page_title %}{% endblock %}</div>
             <div style="font-size: 0.8rem; color: var(--text-muted);">Database: <b>invoice_db</b></div>
         </header>
         <div class="main-body">
