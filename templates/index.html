@@ -162,7 +162,7 @@
             box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
         }
 
-        /* Invoice Type selector dropdown styles */
+        /* Invoice Type selector styles */
         .type-select {
             padding: 5px 8px;
             border-radius: 6px;
@@ -224,7 +224,7 @@
         </div>
     </section>
 
-    <!-- Right: Master Batch Summary & Detail Table -->
+    <!-- Right: Master Summary & Detail Table -->
     <section class="panel">
         <div class="panel-title">
             <span>Master Batch Summary (Calculated Live)</span>
@@ -272,15 +272,13 @@
                         <th>CGST</th>
                         <th>SGST</th>
                         <th>IGST</th>
-                        <th>5% GST</th>
-                        <th>12% GST</th>
                         <th>Total GST</th>
                         <th>Grand Total</th>
                     </tr>
                 </thead>
                 <tbody id="detailTableBody">
                     <tr id="emptyRow">
-                        <td colspan="14" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+                        <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
                             No invoices queued yet. Upload files one by one to see details here.
                         </td>
                     </tr>
@@ -370,14 +368,13 @@
             try {
                 data = JSON.parse(resText);
             } catch (err) {
-                throw new Error("Server error or timeout. Please check your Render logs.");
+                throw new Error("Server error or timeout. Please check your Render service logs.");
             }
 
             if (data.success) {
                 emptyRow.style.display = 'none';
                 const invIndex = stagedInvoices.length;
                 
-                // Ensure valid invoice type fallback
                 if (!data.data.type || !["Computer Generated", "Manual"].includes(data.data.type)) {
                     data.data.type = "Manual";
                 }
@@ -405,14 +402,12 @@
                     <td class="editable-cell" contenteditable="true" data-field="cgst_amount" data-index="${invIndex}">${num(data.data.cgst_amount).toFixed(2)}</td>
                     <td class="editable-cell" contenteditable="true" data-field="sgst_amount" data-index="${invIndex}">${num(data.data.sgst_amount).toFixed(2)}</td>
                     <td class="editable-cell" contenteditable="true" data-field="igst_amount" data-index="${invIndex}">${num(data.data.igst_amount).toFixed(2)}</td>
-                    <td class="editable-cell" contenteditable="true" data-field="gst_5_amount" data-index="${invIndex}">${num(data.data.gst_5_amount).toFixed(2)}</td>
-                    <td class="editable-cell" contenteditable="true" data-field="gst_12_amount" data-index="${invIndex}">${num(data.data.gst_12_amount).toFixed(2)}</td>
                     <td class="editable-cell" contenteditable="true" data-field="total_gst_amount" data-index="${invIndex}" style="font-weight: 600; color: var(--primary);">${num(data.data.total_gst_amount).toFixed(2)}</td>
                     <td class="editable-cell" contenteditable="true" data-field="grand_total" data-index="${invIndex}" style="font-weight: 700; color: var(--success);">${num(data.data.grand_total).toFixed(2)}</td>
                 `;
                 detailTableBody.appendChild(tr);
 
-                // Live event listener for Invoice Type change
+                // Handle Invoice Type change
                 const typeDropdown = tr.querySelector('.type-select');
                 typeDropdown.addEventListener('change', function() {
                     const idx = parseInt(this.getAttribute('data-index'));
@@ -424,7 +419,7 @@
                     }
                 });
 
-                // Live event listener for inline manual corrections
+                // Handle manual inline corrections
                 tr.querySelectorAll('.editable-cell').forEach(cell => {
                     cell.addEventListener('blur', function() {
                         const idx = parseInt(this.getAttribute('data-index'));
