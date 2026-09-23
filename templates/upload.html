@@ -7,28 +7,43 @@
 <style>
     .workspace {
         display: grid;
-        grid-template-columns: 290px minmax(0, 1fr);
-        gap: 16px;
+        grid-template-columns: 310px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
     }
+
     .panel {
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 16px;
+        border-radius: 12px;
+        padding: 18px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 14px;
         min-width: 0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
     }
-    .panel-title { font-size: 0.92rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+    .panel-title {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
     .dropzone {
         border: 2px dashed #cbd5e1;
         border-radius: 8px;
-        padding: 16px;
+        padding: 18px 12px;
         text-align: center;
         background: #f8fafc;
         cursor: pointer;
         position: relative;
+        transition: all 0.15s ease;
     }
     .dropzone:hover { border-color: var(--primary); background: #f0f7ff; }
     .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
@@ -45,6 +60,7 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
+        transition: all 0.15s ease;
     }
     .btn-action:hover { background-color: var(--primary-hover); }
     .btn-action:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -64,27 +80,109 @@
     .preview-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .preview-container iframe { width: 100%; height: 100%; border: none; }
 
-    .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-    .card-stat { background: #f8fafc; border: 1px solid var(--border); padding: 10px 12px; border-radius: 8px; }
-    .card-stat-label { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
-    .card-stat-val { font-size: 1.05rem; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    /* Summary Stat Cards */
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+    .card-stat {
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+    .card-stat-label {
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+    }
+    .card-stat-val {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-top: 3px;
+        font-variant-numeric: tabular-nums;
+    }
     .card-stat-val.highlight { color: var(--success); }
 
-    .table-wrapper { overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 8px; max-height: 520px; width: 100%; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
-    thead { background: #f8fafc; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
-    th, td { padding: 6px 5px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap !important; vertical-align: middle; }
-    th { font-weight: 600; color: var(--text-muted); font-size: 0.71rem; }
+    /* Mobile Table Scroll Helper */
+    .scroll-hint {
+        display: none;
+        font-size: 0.72rem;
+        color: #64748b;
+        background: #f1f5f9;
+        padding: 4px 8px;
+        border-radius: 4px;
+        text-align: center;
+        margin-bottom: 6px;
+    }
+
+    .table-wrapper {
+        overflow-y: auto;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        max-height: 520px;
+        width: 100%;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.74rem;
+        font-variant-numeric: tabular-nums;
+    }
+    thead {
+        background: #f8fafc;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        border-bottom: 1px solid var(--border);
+    }
+    th, td {
+        padding: 6px 5px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        white-space: nowrap !important;
+        vertical-align: middle;
+    }
+    th {
+        font-weight: 600;
+        color: var(--text-muted);
+        font-size: 0.71rem;
+    }
     .num-cell { text-align: right; }
 
     .table-input {
-        width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid transparent; background: transparent; font-size: 0.74rem; outline: none; white-space: nowrap !important;
+        width: 100%;
+        padding: 5px 6px;
+        border-radius: 4px;
+        border: 1px solid transparent;
+        background: transparent;
+        font-size: 0.74rem;
+        outline: none;
+        white-space: nowrap !important;
     }
     .table-input:hover { border-color: #cbd5e1; background: #ffffff; }
-    .table-input:focus { border-color: var(--primary); background: #ffffff; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
+    .table-input:focus {
+        border-color: var(--primary);
+        background: #ffffff;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+    }
     .table-input.num { text-align: right; font-variant-numeric: tabular-nums; }
 
-    .type-select, .rate-select { padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 600; border: 1px solid var(--border); outline: none; cursor: pointer; white-space: nowrap; }
+    .type-select, .rate-select {
+        padding: 4px 6px;
+        border-radius: 5px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        border: 1px solid var(--border);
+        outline: none;
+        cursor: pointer;
+        white-space: nowrap;
+    }
     .type-select.type-computer { background-color: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
     .type-select.type-manual { background-color: #fffbeb; color: #b45309; border-color: #fde68a; }
     .rate-select { background-color: #f1f5f9; color: #334155; }
@@ -92,10 +190,36 @@
     .badge-pending { background: #fef3c7; color: #b45309; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
     .badge-saved { background: #ecfdf5; color: #047857; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.68rem; }
 
-    /* Mobile: Stack Upload Panel over Detail Table */
-    @media (max-width: 900px) {
+    /* Mobile-Specific Adaptations */
+    @media (max-width: 992px) {
         .workspace {
             grid-template-columns: 1fr;
+            gap: 14px;
+        }
+
+        .scroll-hint {
+            display: block;
+        }
+
+        .summary-cards {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .panel-title {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        #saveBatchBtn {
+            width: 100%;
+            justify-content: center;
+            padding: 11px;
+            font-size: 0.85rem;
+        }
+
+        .preview-container {
+            height: 180px;
         }
     }
 </style>
@@ -103,36 +227,41 @@
 
 {% block content %}
 <div class="workspace">
+    <!-- Left / Top: Upload Box -->
     <section class="panel">
-        <div class="panel-title">Upload Invoices</div>
+        <div class="panel-title">
+            <span><i class="fa-solid fa-cloud-arrow-up" style="color: var(--primary);"></i> Upload Invoice</span>
+        </div>
 
         <div style="display: flex; flex-direction: column; gap: 6px;">
             <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted);">Batch Description</label>
-            <input type="text" id="batchNameInput" value="September 2026 Invoices" style="padding: 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.78rem;">
+            <input type="text" id="batchNameInput" value="September 2026 Invoices" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem;">
             
             <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted); margin-top: 2px;">Staff Name</label>
-            <input type="text" id="staffNameInput" value="Accounts Team" style="padding: 7px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.78rem;">
+            <input type="text" id="staffNameInput" value="Accounts Team" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem;">
         </div>
 
         <form id="uploadForm" style="margin-top: 2px;">
             <div class="dropzone">
                 <input type="file" id="invoiceInput" accept=".pdf,image/*" required>
-                <div style="font-size: 0.75rem; color: var(--text-muted);">Click or drag invoice (PDF / Image)</div>
-                <div id="fileChosenText" style="font-size: 0.7rem; color: var(--primary); font-weight: 600; margin-top: 4px;"></div>
+                <i class="fa-regular fa-file-pdf" style="font-size: 1.5rem; color: #94a3b8; margin-bottom: 4px;"></i>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">Tap to choose or drag invoice (PDF / Image)</div>
+                <div id="fileChosenText" style="font-size: 0.72rem; color: var(--primary); font-weight: 600; margin-top: 4px;"></div>
             </div>
-            <button type="submit" id="addBtn" class="btn-action" style="width: 100%; margin-top: 8px; justify-content: center;">
+            <button type="submit" id="addBtn" class="btn-action" style="width: 100%; margin-top: 8px; justify-content: center; padding: 10px;">
                 <span id="btnText">+ Extract & Append Invoice</span>
             </button>
         </form>
 
         <div class="preview-container" id="previewWrapper">
-            <div style="color: var(--text-muted); font-size: 0.75rem;">Invoice preview</div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Invoice preview appears here</div>
         </div>
     </section>
 
+    <!-- Right / Bottom: Extracted Table & Master Summary -->
     <section class="panel">
         <div class="panel-title">
-            <span>Batch Details (Keystroke Recalculation)</span>
+            <span><i class="fa-solid fa-list-check" style="color: #0284c7;"></i> Extracted Invoices</span>
             <button class="btn-action btn-success" id="saveBatchBtn" disabled>
                 💾 Commit Batch to MySQL
             </button>
@@ -144,7 +273,7 @@
                 <div class="card-stat-val" id="statCount">0</div>
             </div>
             <div class="card-stat">
-                <div class="card-stat-label">Net Total (Taxable)</div>
+                <div class="card-stat-label">Net Taxable</div>
                 <div class="card-stat-val" id="statNet">₹ 0.00</div>
             </div>
             <div class="card-stat">
@@ -152,12 +281,16 @@
                 <div class="card-stat-val" id="statGst">₹ 0.00</div>
             </div>
             <div class="card-stat">
-                <div class="card-stat-label">Overall Grand Total</div>
+                <div class="card-stat-label">Grand Total</div>
                 <div class="card-stat-val highlight" id="statGrand">₹ 0.00</div>
             </div>
         </div>
 
-        <div class="table-wrapper" style="margin-top: 6px;">
+        <div class="scroll-hint">
+            <i class="fa-solid fa-arrows-left-right"></i> Scroll horizontally to view & edit all fields
+        </div>
+
+        <div class="table-wrapper">
             <table>
                 <thead>
                     <tr>
@@ -178,7 +311,7 @@
                 </thead>
                 <tbody id="detailTableBody">
                     <tr id="emptyRow">
-                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 36px 0;">
+                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 32px 0;">
                             No invoices queued. Upload a file above to begin.
                         </td>
                     </tr>
