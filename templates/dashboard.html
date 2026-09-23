@@ -39,12 +39,10 @@
         color: #1e293b;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.15s ease;
     }
     .filter-item input:focus, .filter-item select:focus {
         border-color: var(--primary);
         background: #ffffff;
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
     }
     .btn-filter-reset {
         background: #f1f5f9;
@@ -59,7 +57,6 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        transition: all 0.15s ease;
     }
     .btn-filter-reset:hover {
         background: #e2e8f0;
@@ -95,11 +92,6 @@
         position: relative;
         overflow: hidden;
         box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
     }
     .metric-card::before {
         content: '';
@@ -129,7 +121,6 @@
         font-weight: 700;
         color: var(--text-muted);
         text-transform: uppercase;
-        letter-spacing: 0.02em;
     }
     .icon-bubble {
         width: 32px;
@@ -226,14 +217,14 @@
 {% endblock %}
 
 {% block content %}
-<!-- Live Instant Filter Toolbar -->
+<!-- Live Filter Toolbar -->
 <div class="dashboard-filter-bar">
     <div class="filter-item">
-        <label>Start Date</label>
+        <label>Start Date (Optional)</label>
         <input type="date" id="dashStartDate">
     </div>
     <div class="filter-item">
-        <label>End Date</label>
+        <label>End Date (Optional)</label>
         <input type="date" id="dashEndDate">
     </div>
     <div class="filter-item">
@@ -253,7 +244,7 @@
         </select>
     </div>
     <button type="button" class="btn-filter-reset" id="resetFilterBtn">
-        <i class="fa-solid fa-rotate-left"></i> View All Dates
+        <i class="fa-solid fa-rotate-left"></i> Clear Filters
     </button>
 </div>
 
@@ -394,7 +385,7 @@
             <tbody id="recentTableBody">
                 <tr>
                     <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Loading metrics...
+                        Loading records...
                     </td>
                 </tr>
             </tbody>
@@ -414,15 +405,6 @@
     const dashTaxCat = document.getElementById('dashTaxCat');
     const resetFilterBtn = document.getElementById('resetFilterBtn');
 
-    // Get client's current local date in YYYY-MM-DD
-    function getTodayDateString() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-
     async function loadFilteredDashboard() {
         const params = new URLSearchParams();
         if (dashStartDate.value) params.append('start_date', dashStartDate.value);
@@ -430,23 +412,25 @@
         if (dashType.value && dashType.value !== 'all') params.append('type', dashType.value);
         if (dashTaxCat.value && dashTaxCat.value !== 'all') params.append('tax_cat', dashTaxCat.value);
 
+        const recentBody = document.getElementById('recentTableBody');
+
         try {
             const res = await fetch(`/api/dashboard-metrics?${params.toString()}`);
             const data = await res.json();
 
             if (!data.success) {
-                console.error("Dashboard metric error:", data.error);
+                console.error("Dashboard error:", data.error);
+                recentBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red; padding: 20px;">Database Error: ${data.error || 'Failed to fetch'}</td></tr>`;
                 return;
             }
 
-            const t = data.totals;
+            const t = data.totals || {};
 
-            // 1. Render Counts
+            // 1. Populate Metric Cards safely
             document.getElementById('mTotalCount').textContent = t.total_invoices || 0;
             document.getElementById('mCompCount').textContent = t.computer_count || 0;
             document.getElementById('mManualCount').textContent = t.manual_count || 0;
 
-            // 2. Render Financial Values
             document.getElementById('mNet').textContent = '₹ ' + Number(t.total_net || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
             document.getElementById('mCgst').textContent = '₹ ' + Number(t.total_cgst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
             document.getElementById('mSgst').textContent = '₹ ' + Number(t.total_sgst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
@@ -454,69 +438,8 @@
             document.getElementById('mTotalGst').textContent = '₹ ' + Number(t.total_gst || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
             document.getElementById('mGrand').textContent = '₹ ' + Number(t.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
 
-            // 3. Render Pie Chart
-            const compCount = data.types['Computer Generated'] || 0;
-            const manCount = data.types['Manual'] || 0;
-            const ctxPie = document.getElementById('typePieChart').getContext('2d');
-
-            if (pieChartInstance) pieChartInstance.destroy();
-            pieChartInstance = new Chart(ctxPie, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Computer Generated', 'Manual'],
-                    datasets: [{
-                        data: [compCount, manCount],
-                        backgroundColor: ['#3b82f6', '#f59e0b'],
-                        borderColor: '#ffffff',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14 } }
-                    },
-                    cutout: '65%'
-                }
-            });
-
-            // 4. Render Bar Chart
-            const labels = (data.trends && data.trends.length) ? data.trends.map(x => x.d_date) : ['No Data'];
-            const values = (data.trends && data.trends.length) ? data.trends.map(x => Number(x.day_total)) : [0];
-            const ctxBar = document.getElementById('trendBarChart').getContext('2d');
-
-            if (barChartInstance) barChartInstance.destroy();
-            barChartInstance = new Chart(ctxBar, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Grand Total (₹)',
-                        data: values,
-                        backgroundColor: '#10b981',
-                        borderRadius: 5,
-                        barThickness: 24
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#f1f5f9' },
-                            ticks: { callback: (v) => '₹ ' + v }
-                        },
-                        x: { grid: { display: false } }
-                    }
-                }
-            });
-
-            // 5. Populate Filtered Invoices Table
-            const recentBody = document.getElementById('recentTableBody');
-            if (data.recent && data.recent.length) {
+            // 2. Render Invoices Table
+            if (data.recent && data.recent.length > 0) {
                 recentBody.innerHTML = data.recent.map(r => `
                     <tr>
                         <td style="font-weight: 700; color: #64748b;">#${r.id}</td>
@@ -525,7 +448,6 @@
                         <td style="color: #64748b;">${r.invoice_date || '-'}</td>
                         <td>
                             <span class="badge-chip ${r.invoice_type === 'Computer Generated' ? 'badge-comp' : 'badge-man'}">
-                                <i class="fa-solid ${r.invoice_type === 'Computer Generated' ? 'fa-laptop' : 'fa-pen-nib'}"></i>
                                 ${r.invoice_type || 'Manual'}
                             </span>
                         </td>
@@ -541,24 +463,98 @@
                 recentBody.innerHTML = `
                     <tr>
                         <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">
-                            No invoices recorded for the selected criteria.
+                            No invoices found in database for the selected criteria.
                         </td>
                     </tr>
                 `;
             }
 
+            // 3. Render Pie Chart inside try-catch to prevent freezes
+            try {
+                const pieCanvas = document.getElementById('typePieChart');
+                if (pieCanvas && typeof Chart !== 'undefined') {
+                    const compCount = (data.types && data.types['Computer Generated']) ? data.types['Computer Generated'] : 0;
+                    const manCount = (data.types && data.types['Manual']) ? data.types['Manual'] : 0;
+                    const hasData = (compCount + manCount) > 0;
+
+                    if (pieChartInstance) pieChartInstance.destroy();
+                    pieChartInstance = new Chart(pieCanvas.getContext('2d'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: hasData ? ['Computer Generated', 'Manual'] : ['No Data'],
+                            datasets: [{
+                                data: hasData ? [compCount, manCount] : [1],
+                                backgroundColor: hasData ? ['#3b82f6', '#f59e0b'] : ['#e2e8f0'],
+                                borderColor: '#ffffff',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } }
+                            },
+                            cutout: '65%'
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('Pie chart render warning:', err);
+            }
+
+            // 4. Render Bar Chart inside try-catch to prevent freezes
+            try {
+                const barCanvas = document.getElementById('trendBarChart');
+                if (barCanvas && typeof Chart !== 'undefined') {
+                    const labels = (data.trends && data.trends.length) ? data.trends.map(x => x.d_date) : ['No Data'];
+                    const values = (data.trends && data.trends.length) ? data.trends.map(x => Number(x.day_total)) : [0];
+
+                    if (barChartInstance) barChartInstance.destroy();
+                    barChartInstance = new Chart(barCanvas.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Grand Total (₹)',
+                                data: values,
+                                backgroundColor: '#10b981',
+                                borderRadius: 5,
+                                barThickness: 24
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: '#f1f5f9' },
+                                    ticks: { callback: (v) => '₹ ' + v }
+                                },
+                                x: { grid: { display: false } }
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn('Bar chart render warning:', err);
+            }
+
         } catch (e) {
-            console.error('Failed to load dashboard metrics:', e);
+            console.error('Fatal load error:', e);
+            recentBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red; padding: 20px;">Failed to connect to backend: ${e.message}</td></tr>`;
         }
     }
 
-    // Instant onchange listeners for all filter inputs
+    // Instant filter changes
     dashStartDate.addEventListener('change', loadFilteredDashboard);
     dashEndDate.addEventListener('change', loadFilteredDashboard);
     dashType.addEventListener('change', loadFilteredDashboard);
     dashTaxCat.addEventListener('change', loadFilteredDashboard);
 
-    // Reset button clears dates to view entire history
+    // Reset button
     resetFilterBtn.addEventListener('click', function() {
         dashStartDate.value = '';
         dashEndDate.value = '';
@@ -567,11 +563,8 @@
         loadFilteredDashboard();
     });
 
-    // On initial page load: default to TODAY'S date and query immediately
+    // Initial load: show all records without restricting to today
     document.addEventListener('DOMContentLoaded', function() {
-        const todayStr = getTodayDateString();
-        dashStartDate.value = todayStr;
-        dashEndDate.value = todayStr;
         loadFilteredDashboard();
     });
 </script>
