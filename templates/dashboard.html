@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Overview{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Invoice Analytics & Overview{% endblock %}
+
+{% block head %}
+<style>
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .metric-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+    }
+    .metric-label { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+    .metric-val { font-size: 1.25rem; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .metric-val.highlight { color: var(--success); }
+
+    .charts-grid {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 20px;
+    }
+    .chart-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px;
+    }
+    .chart-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="metrics-grid">
+    <div class="metric-card">
+        <div class="metric-label">Total Invoices</div>
+        <div class="metric-val" id="mCount">0</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Total Net (Taxable)</div>
+        <div class="metric-val" id="mNet">₹ 0.00</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Total CGST</div>
+        <div class="metric-val" id="mCgst">₹ 0.00</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Total SGST</div>
+        <div class="metric-val" id="mSgst">₹ 0.00</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Total GST Collected</div>
+        <div class="metric-val" style="color: var(--primary);" id="mGst">₹ 0.00</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Grand Total</div>
+        <div class="metric-val highlight" id="mGrand">₹ 0.00</div>
+    </div>
+</div>
+
+<div class="charts-grid">
+    <div class="chart-panel">
+        <div class="chart-title">Invoices by Type (Manual vs Computer)</div>
+        <div style="position: relative; height: 260px;">
+            <canvas id="typePieChart"></canvas>
+        </div>
+    </div>
+    <div class="chart-panel">
+        <div class="chart-title">Recent Invoicing Volume (Last 7 Days)</div>
+        <div style="position: relative; height: 260px;">
+            <canvas id="trendBarChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function loadDashboard() {
+        try {
+            const res = await fetch('/api/dashboard-metrics');
+            const data = await res.json();
+            if (!data.success) return;
+
+            const t = data.totals;
+            document.getElementById('mCount').textContent = t.total_invoices || 0;
+            document.getElementById('mNet').textContent = '₹ ' + Number(t.total_net).toFixed(2);
+            document.getElementById('mCgst').textContent = '₹ ' + Number(t.total_cgst).toFixed(2);
+            document.getElementById('mSgst').textContent = '₹ ' + Number(t.total_sgst).toFixed(2);
+            document.getElementById('mGst').textContent = '₹ ' + Number(t.total_gst).toFixed(2);
+            document.getElementById('mGrand').textContent = '₹ ' + Number(t.grand_total).toFixed(2);
+
+            // 1. Doughnut Chart
+            new Chart(document.getElementById('typePieChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Computer Generated', 'Manual'],
+                    datasets: [{
+                        data: [data.types['Computer Generated'], data.types['Manual']],
+                        backgroundColor: ['#3b82f6', '#f59e0b'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+
+            // 2. Bar Chart
+            const labels = data.trends.map(x => x.d_date);
+            const values = data.trends.map(x => Number(x.day_total));
+
+            new Chart(document.getElementById('trendBarChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels.length ? labels : ['No records'],
+                    datasets: [{
+                        label: 'Grand Total (₹)',
+                        data: values.length ? values : [0],
+                        backgroundColor: '#10b981',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Failed to load dashboard metrics:', e);
+        }
+    }
+    document.addEventListener('DOMContentLoaded', loadDashboard);
+</script>
+{% endblock %}
